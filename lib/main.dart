@@ -733,6 +733,38 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     }
 
     if (isLicenseValid) {
+      // Check for pending activation/registration info
+      try {
+        final pendingName = await DatabaseHelper.getSetting('pendingClientName');
+        final pendingEmail = await DatabaseHelper.getSetting('pendingClientEmail');
+        final pendingHash = await DatabaseHelper.getSetting('pendingClientPasswordHash');
+
+        if (pendingName != null && pendingName.isNotEmpty &&
+            pendingEmail != null && pendingEmail.isNotEmpty &&
+            pendingHash != null && pendingHash.isNotEmpty) {
+          
+          await DatabaseHelper.saveClientName(pendingName);
+          await DatabaseHelper.saveClientHwid(_hwid);
+          await DatabaseHelper.saveClientEmail(pendingEmail);
+          await DatabaseHelper.saveClientPasswordHash(pendingHash);
+
+          final newUser = AppUser(
+            email: pendingEmail,
+            passwordHash: pendingHash,
+            role: 'manager',
+          );
+          await DatabaseHelper.saveUser(newUser);
+          currentLoggedInUser = newUser;
+
+          // Clear pending registration details
+          await DatabaseHelper.saveSetting('pendingClientName', "");
+          await DatabaseHelper.saveSetting('pendingClientEmail', "");
+          await DatabaseHelper.saveSetting('pendingClientPasswordHash', "");
+        }
+      } catch (e) {
+        debugPrint("Error auto-registering pending client: $e");
+      }
+
       final email = await DatabaseHelper.getClientEmail();
       final passHash = await DatabaseHelper.getClientPasswordHash();
 
@@ -825,6 +857,134 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
         _activating = false;
         _errorMessage =
             "مفتاح التفعيل غير صحيح! يرجى التحقق والتجربة مرة أخرى.";
+      });
+    }
+  }
+
+  Future<void> _sendActivationRequest() async {
+    final name = _regUsernameController.text.trim();
+    final email = _regEmailController.text.trim();
+    final password = _regPasswordController.text.trim();
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("الرجاء ملء جميع الحقول المطلوبة لطلب التفعيل ⚠️", textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (!_isValidGmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("الرجاء إدخال بريد إلكتروني Gmail صالح ⚠️", textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("يجب ألا تقل كلمة المرور عن 8 خانات ⚠️", textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _registering = true;
+    });
+
+    try {
+      // 1. Save locally as pending registration info
+      final hashed = hashPassword(password);
+      await DatabaseHelper.saveSetting('pendingClientName', name);
+      await DatabaseHelper.saveSetting('pendingClientEmail', email);
+      await DatabaseHelper.saveSetting('pendingClientPasswordHash', hashed);
+
+      // 2. Prepare JSON data payload
+      final payload = {
+        "name": name,
+        "email": email,
+        "password": password,
+        "hwid": _hwid
+      };
+
+      // 3. Send via POST request
+      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbz_9G9o35N7423m80n5v4A2E_12345/exec';
+      final url = Uri.parse(scriptUrlStr);
+      
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("✅ تم إرسال طلب التفعيل بنجاح! يرجى إبلاغ الدعم الفني.", textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Cairo', fontSize: 16)),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      } else {
+        throw Exception("Server returned code ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error sending activation request email: $e");
+      
+      // Fallback: Show copy dialog with details so they can send it manually via WhatsApp
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text("تعذر الإرسال التلقائي", style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("لم نتمكن من إرسال الطلب تلقائياً بسبب انقطاع الإنترنت أو عدم إعداد الرابط. يرجى نسخ البيانات التالية وإرسالها يدوياً للدعم الفني:", style: TextStyle(fontFamily: 'Cairo')),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.black26,
+                    child: SelectableText(
+                      "طلب تفعيل العطار استور:\nالاسم: $name\nالبريد: $email\nكلمة المرور: $password\nرمز الجهاز (HWID): $_hwid",
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(
+                      text: "طلب تفعيل العطار استور:\nالاسم: $name\nالبريد: $email\nكلمة المرور: $password\nرمز الجهاز (HWID): $_hwid"
+                    ));
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("📋 تم نسخ البيانات للحافظة")),
+                    );
+                  },
+                  child: const Text("نسخ البيانات وإغلاق", style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _registering = false;
       });
     }
   }
@@ -1716,6 +1876,147 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                 ),
               ),
             ],
+          ),
+        ),
+        const Divider(height: 40, thickness: 1, color: Colors.grey),
+        Text(
+          "📝 طلب تسجيل وتفعيل سريع",
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "أدخل بياناتك هنا لإرسال طلب تفعيل للدعم الفني مباشرة. بمجرد تفعيل حسابك من الإدارة، سيفتح البرنامج تلقائياً.",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            color: textMutedColor,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            "الاسم / اسم المحل:",
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _regUsernameController,
+          style: TextStyle(color: textColor, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: "أدخل اسم العميل أو اسم المحل",
+            prefixIcon: Icon(Icons.person_outline_rounded,
+                color: primaryColor.withValues(alpha: 0.7), size: 20),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            "البريد الإلكتروني (Gmail):",
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _regEmailController,
+          style: TextStyle(color: textColor, fontSize: 15),
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            hintText: "example@gmail.com",
+            prefixIcon: Icon(Icons.email_outlined,
+                color: primaryColor.withValues(alpha: 0.7), size: 20),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            "كلمة المرور المطلوبة:",
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _regPasswordController,
+          style: TextStyle(color: textColor, fontSize: 15),
+          obscureText: !_regPasswordVisible,
+          decoration: InputDecoration(
+            hintText: "أدخل كلمة مرور لا تقل عن 8 أحرف",
+            prefixIcon: Icon(Icons.lock_outline_rounded,
+                color: primaryColor.withValues(alpha: 0.7), size: 20),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _regPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                color: primaryColor.withValues(alpha: 0.7),
+                size: 20,
+              ),
+              onPressed: () {
+                setState(() {
+                  _regPasswordVisible = !_regPasswordVisible;
+                });
+              },
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E2F41),
+              foregroundColor: primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),
+              ),
+              elevation: 2,
+            ),
+            onPressed: _registering ? null : _sendActivationRequest,
+            icon: _registering
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFD4AF37)),
+                    ),
+                  )
+                : const Icon(Icons.send_rounded, size: 18),
+            label: const Text(
+              "إرسال طلب تفعيل للدعم الفني",
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
       ],
