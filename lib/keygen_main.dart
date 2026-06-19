@@ -175,9 +175,22 @@ class _KeygenScreenState extends State<KeygenScreen> {
       final exeDir = File(Platform.resolvedExecutable).parent.path;
       final file = File("$exeDir/license.lic");
       await file.writeAsString(key);
+
+      // Write a copy to local AppData in case testing on the same machine
+      try {
+        final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+        if (localAppData.isNotEmpty) {
+          final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+          await hiddenFile.parent.create(recursive: true);
+          await hiddenFile.writeAsString(key);
+        }
+      } catch (e) {
+        debugPrint("Error writing local wincheck.dat from Keygen: $e");
+      }
+
       setState(() {
         _fileStatus =
-            "تم إنشاء ملف التفعيل (license.lic) بنجاح بجوار الكيجين!\nمدة التفعيل: ${expiry == 'LIFETIME' ? 'مدى الحياة ♾️' : expiry} 📂";
+            "تم إنشاء ملف التفعيل (license.lic) بنجاح بجوار الكيجين!\nوكذلك نسخة التفعيل الاحتياطي في AppData 📂\nمدة التفعيل: ${expiry == 'LIFETIME' ? 'مدى الحياة ♾️' : expiry}";
       });
     } catch (e) {
       setState(() {
@@ -364,6 +377,40 @@ class _KeygenScreenState extends State<KeygenScreen> {
       final resData = jsonDecode(response.body);
       if (resData['status'] != 'success') {
         throw Exception("فشل حفظ التحديثات سحابياً: ${resData['message']}");
+      }
+
+      // If any of the subscribers match the local HWID, write its activation key locally
+      try {
+        final localHwid = await HwidService.getHWID();
+        final cleanLocalHwid = localHwid.replaceAll('-', '').toUpperCase();
+        for (var sub in _subscribers) {
+          final subHwid = sub['hwid']?.toString() ?? '';
+          final cleanSubHwid = subHwid.replaceAll('-', '').toUpperCase();
+          if (cleanSubHwid == cleanLocalHwid) {
+            final status = sub['status']?.toString().toLowerCase();
+            if (status == 'active' || status == 'نشط' || status == 'متفعل') {
+              final expiry = sub['expiryDate']?.toString() ?? 'LIFETIME';
+              final key = HwidService.generateKey(localHwid, expiry);
+              final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+              if (localAppData.isNotEmpty) {
+                final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+                await hiddenFile.parent.create(recursive: true);
+                await hiddenFile.writeAsString(key);
+              }
+            } else {
+              // If blocked or inactive, clear local license key
+              final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+              if (localAppData.isNotEmpty) {
+                final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+                if (await hiddenFile.exists()) {
+                  await hiddenFile.delete();
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Error auto-writing wincheck.dat from subscribers list: $e");
       }
 
       setState(() {
