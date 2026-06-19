@@ -31,7 +31,7 @@ import 'views/suppliers_view.dart';
 import 'views/categories_view.dart';
 import 'views/add_product_view.dart';
 import 'views/users_view.dart';
-import 'views/returns_view.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,10 +45,8 @@ void main() async {
   // Migrate JSON data to SQLite if necessary (ignore if database is missing for now)
   try {
     await DatabaseHelper.checkAndMigrate();
-    await DatabaseHelper.loadComplaintNumber();
   } on DatabaseMissingException {
-    debugPrint(
-        'Database is missing, migration deferred until user creates/restores database.');
+    debugPrint('Database is missing, migration deferred until user creates/restores database.');
   } catch (e) {
     debugPrint('Migration checking failed: $e');
   }
@@ -290,7 +288,6 @@ class MobileRepairApp extends StatelessWidget {
 enum LicensePageState {
   checking,
   dbMissing,
-  complaintNumberInput,
   notActivated,
   notRegistered,
   login,
@@ -321,8 +318,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
   final TextEditingController _regUsernameController = TextEditingController();
   final TextEditingController _regEmailController = TextEditingController();
   final TextEditingController _regPasswordController = TextEditingController();
-  final TextEditingController _regConfirmPasswordController =
-      TextEditingController();
+  final TextEditingController _regConfirmPasswordController = TextEditingController();
   bool _regPasswordVisible = false;
   bool _regConfirmPasswordVisible = false;
   String _regError = "";
@@ -330,14 +326,10 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
 
   // Login Controllers
   final TextEditingController _loginEmailController = TextEditingController();
-  final TextEditingController _loginPasswordController =
-      TextEditingController();
+  final TextEditingController _loginPasswordController = TextEditingController();
   bool _loginPasswordVisible = false;
   String _loginError = "";
   bool _loggingIn = false;
-
-  // Complaint Number Controller
-  final TextEditingController _complaintController = TextEditingController();
 
   @override
   void initState() {
@@ -354,7 +346,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     _regConfirmPasswordController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
-    _complaintController.dispose();
     super.dispose();
   }
 
@@ -378,8 +369,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
             backgroundColor: cardBgColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(15),
-              side: BorderSide(
-                  color: primaryColor.withValues(alpha: 0.5), width: 1.5),
+              side: BorderSide(color: primaryColor.withValues(alpha: 0.5), width: 1.5),
             ),
             title: Row(
               children: [
@@ -421,12 +411,9 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                 const SizedBox(height: 4),
                 Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF0D131E)
-                        : const Color(0xFFF0F4F8),
+                    color: isDark ? const Color(0xFF0D131E) : const Color(0xFFF0F4F8),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: textColor.withValues(alpha: 0.1)),
                   ),
@@ -451,12 +438,9 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF0D131E)
-                        : const Color(0xFFF0F4F8),
+                    color: isDark ? const Color(0xFF0D131E) : const Color(0xFFF0F4F8),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: textColor.withValues(alpha: 0.1)),
                   ),
@@ -515,21 +499,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     );
   }
 
-  Future<void> _clearLocalLicense() async {
-    try {
-      await DatabaseHelper.saveActivationKey("");
-      final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-      if (localAppData.isNotEmpty) {
-        final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-        if (await hiddenFile.exists()) {
-          await hiddenFile.delete();
-        }
-      }
-    } catch (e) {
-      debugPrint("Error clearing local license: $e");
-    }
-  }
-
   Future<void> _checkLicense() async {
     setState(() {
       _pageState = LicensePageState.checking;
@@ -559,187 +528,163 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       return;
     }
 
-    await DatabaseHelper.loadComplaintNumber();
-
     bool isLicenseValid = false;
-    bool githubCheckAttempted = false;
-    bool hwidFoundInCentral = false;
-    String? centralError;
 
-    // Fetch central subscribers.db from GitHub if internet is available
+    // 1. Check for local license.lic file
     try {
-      final url = Uri.parse('https://raw.githubusercontent.com/mojlinux58/ELATTAR/DB_SUB/keygen/subscribers.db');
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        githubCheckAttempted = true;
-        final tempDir = await getTemporaryDirectory();
-        final tempDbFile = File('${tempDir.path}/temp_subscribers.db');
-        await tempDbFile.writeAsBytes(response.bodyBytes);
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final licenseFile = File("$exeDir/license.lic");
+      if (await licenseFile.exists()) {
+        final content = (await licenseFile.readAsString()).trim();
+        final isValid = await HwidService.verifyLicense(content);
+        if (isValid) {
+          await DatabaseHelper.saveActivationKey(content);
 
-        // Open central SQLite database
-        final db = await databaseFactory.openDatabase(tempDbFile.path);
-        
-        final cleanHwid = _hwid.replaceAll('-', '').toUpperCase();
-        final List<Map<String, dynamic>> results = await db.query(
-          'subscribers',
-          where: 'UPPER(REPLACE(hwid, "-", "")) = ?',
-          whereArgs: [cleanHwid],
-        );
+          final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+          if (localAppData.isNotEmpty) {
+            final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+            await hiddenFile.parent.create(recursive: true);
+            await hiddenFile.writeAsString(content);
+          }
 
-        if (results.isNotEmpty) {
-          hwidFoundInCentral = true;
-          final clientData = results.first;
-          final status = clientData['status']?.toString().toLowerCase();
-          final expiry = clientData['expiryDate']?.toString();
+          try {
+            await licenseFile.delete();
+          } catch (e) {
+            debugPrint("Failed to delete local license file: $e");
+          }
 
-          if (status == 'blocked' || status == 'محظور') {
-            centralError = "تم حظر هذا الاشتراك لعدم سداد المستحقات أو لمخالفة الشروط. يرجى التواصل مع الدعم الفني.";
-            await _clearLocalLicense();
-          } else if (status == 'inactive' || status == 'غير نشط' || status == 'غير متفعل') {
-            centralError = "هذا الاشتراك غير نشط حالياً. يرجى التواصل مع الدعم الفني لتفعيل الخدمة.";
-            await _clearLocalLicense();
-          } else if (expiry != null) {
-            if (expiry == 'LIFETIME') {
-              final newKey = HwidService.generateKey(_hwid, 'LIFETIME');
-              await DatabaseHelper.saveActivationKey(newKey);
-              HwidService.expiryDate = 'LIFETIME';
-              final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-              if (localAppData.isNotEmpty) {
-                final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-                await hiddenFile.parent.create(recursive: true);
-                await hiddenFile.writeAsString(newKey);
-              }
-              isLicenseValid = true;
-            } else {
+          isLicenseValid = true;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error checking license.lic: $e");
+    }
+
+    // 2. Check stealth AppData file
+    if (!isLicenseValid) {
+      String? hiddenKey;
+      try {
+        final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+        if (localAppData.isNotEmpty) {
+          final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+          if (await hiddenFile.exists()) {
+            hiddenKey = (await hiddenFile.readAsString()).trim();
+          }
+        }
+      } catch (e) {
+        debugPrint("Error reading stealth appdata key: $e");
+      }
+
+      if (hiddenKey != null) {
+        final isValid = await HwidService.verifyLicense(hiddenKey);
+        if (isValid) {
+          await DatabaseHelper.saveActivationKey(hiddenKey);
+          isLicenseValid = true;
+        }
+      }
+    }
+
+    // 3. Check SQLite settings table
+    if (!isLicenseValid) {
+      final savedKey = await DatabaseHelper.getActivationKey();
+      if (savedKey != null) {
+        final isValid = await HwidService.verifyLicense(savedKey);
+        if (isValid) {
+          try {
+            final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+            if (localAppData.isNotEmpty) {
+              final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+              await hiddenFile.parent.create(recursive: true);
+              await hiddenFile.writeAsString(savedKey);
+            }
+          } catch (e) {
+            debugPrint("Error writing stealth appdata backup: $e");
+          }
+          isLicenseValid = true;
+        }
+      }
+    }
+
+    if (isLicenseValid) {
+      // Fetch central subscribers.db from GitHub if internet is available
+      bool centralCheckPassed = true;
+      String? centralError;
+      try {
+        final url = Uri.parse('https://raw.githubusercontent.com/mojlinux58/ELATTAR/DB_SUB/keygen/subscribers.db');
+        final response = await http.get(url).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          final tempDir = await getTemporaryDirectory();
+          final tempDbFile = File('${tempDir.path}/temp_subscribers.db');
+          await tempDbFile.writeAsBytes(response.bodyBytes);
+
+          // Open central SQLite database
+          final db = await databaseFactory.openDatabase(tempDbFile.path);
+          
+          final cleanHwid = _hwid.replaceAll('-', '').toUpperCase();
+          final List<Map<String, dynamic>> results = await db.query(
+            'subscribers',
+            where: 'UPPER(REPLACE(hwid, "-", "")) = ?',
+            whereArgs: [cleanHwid],
+          );
+
+          if (results.isNotEmpty) {
+            final clientData = results.first;
+            final status = clientData['status']?.toString().toLowerCase();
+            final expiry = clientData['expiryDate']?.toString();
+
+            if (status == 'blocked' || status == 'محظور') {
+              centralCheckPassed = false;
+              centralError = "تم حظر هذا الاشتراك لعدم سداد المستحقات أو لمخالفة الشروط. يرجى التواصل مع الدعم الفني.";
+            } else if (status == 'inactive' || status == 'غير نشط' || status == 'غير متفعل') {
+              centralCheckPassed = false;
+              centralError = "هذا الاشتراك غير نشط حالياً. يرجى التواصل مع الدعم الفني لتفعيل الخدمة.";
+            } else if (expiry != null && expiry != 'LIFETIME') {
               final expDate = DateTime.parse(expiry);
               final currentDate = DateTime.now();
               final diff = expDate.difference(DateTime(currentDate.year, currentDate.month, currentDate.day)).inDays;
               if (diff < 0) {
+                centralCheckPassed = false;
                 centralError = "انتهت فترة الاشتراك الخاصة بك ($expiry). يرجى التجديد للاستمرار.";
-                await _clearLocalLicense();
               } else {
-                // Automatically generate/update local license key
-                final newKey = HwidService.generateKey(_hwid, expiry);
-                await DatabaseHelper.saveActivationKey(newKey);
-                HwidService.expiryDate = expiry;
-                final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-                if (localAppData.isNotEmpty) {
-                  final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-                  await hiddenFile.parent.create(recursive: true);
-                  await hiddenFile.writeAsString(newKey);
+                // Automatically extend local license key if central expiry changed
+                final savedKey = await DatabaseHelper.getActivationKey();
+                if (savedKey != null) {
+                  if (HwidService.expiryDate != expiry) {
+                    final newKey = HwidService.generateKey(_hwid, expiry);
+                    await DatabaseHelper.saveActivationKey(newKey);
+                    HwidService.expiryDate = expiry;
+                    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
+                    if (localAppData.isNotEmpty) {
+                      final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+                      await hiddenFile.parent.create(recursive: true);
+                      await hiddenFile.writeAsString(newKey);
+                    }
+                  }
                 }
-                isLicenseValid = true;
               }
             }
           }
+          await db.close();
+          try {
+            await tempDbFile.delete();
+          } catch (_) {}
         }
-        await db.close();
-        try {
-          await tempDbFile.delete();
-        } catch (_) {}
+      } catch (e) {
+        debugPrint("Central subscription check failed/timed out: $e");
       }
-    } catch (e) {
-      debugPrint("Central subscription check failed/timed out: $e");
-    }
 
-    if (githubCheckAttempted && hwidFoundInCentral) {
-      if (centralError != null) {
+      if (!centralCheckPassed) {
         setState(() {
           _pageState = LicensePageState.notActivated;
           _errorMessage = centralError ?? "الاشتراك غير صالح.";
         });
         return;
       }
-    } else {
-      // Fallback to local validation if offline or not registered on central database
-      
-      // 1. Check for local license.lic file
-      try {
-        final exeDir = File(Platform.resolvedExecutable).parent.path;
-        final licenseFile = File("$exeDir/license.lic");
-        if (await licenseFile.exists()) {
-          final content = (await licenseFile.readAsString()).trim();
-          final isValid = await HwidService.verifyLicense(content);
-          if (isValid) {
-            await DatabaseHelper.saveActivationKey(content);
 
-            final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-            if (localAppData.isNotEmpty) {
-              final hiddenFile =
-                  File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-              await hiddenFile.parent.create(recursive: true);
-              await hiddenFile.writeAsString(content);
-            }
-
-            try {
-              await licenseFile.delete();
-            } catch (e) {
-              debugPrint("Failed to delete local license file: $e");
-            }
-
-            isLicenseValid = true;
-          }
-        }
-      } catch (e) {
-        debugPrint("Error checking license.lic: $e");
-      }
-
-      // 2. Check stealth AppData file
-      if (!isLicenseValid) {
-        String? hiddenKey;
-        try {
-          final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-          if (localAppData.isNotEmpty) {
-            final hiddenFile =
-                File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-            if (await hiddenFile.exists()) {
-              hiddenKey = (await hiddenFile.readAsString()).trim();
-            }
-          }
-        } catch (e) {
-          debugPrint("Error reading stealth appdata key: $e");
-        }
-
-        if (hiddenKey != null) {
-          final isValid = await HwidService.verifyLicense(hiddenKey);
-          if (isValid) {
-            await DatabaseHelper.saveActivationKey(hiddenKey);
-            isLicenseValid = true;
-          }
-        }
-      }
-
-      // 3. Check SQLite settings table
-      if (!isLicenseValid) {
-        final savedKey = await DatabaseHelper.getActivationKey();
-        if (savedKey != null) {
-          final isValid = await HwidService.verifyLicense(savedKey);
-          if (isValid) {
-            try {
-              final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-              if (localAppData.isNotEmpty) {
-                final hiddenFile =
-                    File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
-                await hiddenFile.parent.create(recursive: true);
-                await hiddenFile.writeAsString(savedKey);
-              }
-            } catch (e) {
-              debugPrint("Error writing stealth appdata backup: $e");
-            }
-            isLicenseValid = true;
-          }
-        }
-      }
-    }
-
-    if (isLicenseValid) {
       final email = await DatabaseHelper.getClientEmail();
       final passHash = await DatabaseHelper.getClientPasswordHash();
 
-      if (email == null ||
-          email.isEmpty ||
-          passHash == null ||
-          passHash.isEmpty) {
+      if (email == null || email.isEmpty || passHash == null || passHash.isEmpty) {
         setState(() {
           _pageState = LicensePageState.notRegistered;
         });
@@ -751,11 +696,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     } else {
       setState(() {
         _pageState = LicensePageState.notActivated;
-        if (githubCheckAttempted && hwidFoundInCentral && centralError != null) {
-          _errorMessage = centralError;
-        } else {
-          _errorMessage = "";
-        }
       });
     }
   }
@@ -783,8 +723,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       try {
         final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
         if (localAppData.isNotEmpty) {
-          final hiddenFile =
-              File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
+          final hiddenFile = File("$localAppData/Microsoft/Windows/Shell/wincheck.dat");
           await hiddenFile.parent.create(recursive: true);
           await hiddenFile.writeAsString(key);
         }
@@ -811,10 +750,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
 
       setState(() {
         _activating = false;
-        if (email == null ||
-            email.isEmpty ||
-            passHash == null ||
-            passHash.isEmpty) {
+        if (email == null || email.isEmpty || passHash == null || passHash.isEmpty) {
           _pageState = LicensePageState.notRegistered;
         } else {
           _pageState = LicensePageState.login;
@@ -823,8 +759,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     } else {
       setState(() {
         _activating = false;
-        _errorMessage =
-            "مفتاح التفعيل غير صحيح! يرجى التحقق والتجربة مرة أخرى.";
+        _errorMessage = "مفتاح التفعيل غير صحيح! يرجى التحقق والتجربة مرة أخرى.";
       });
     }
   }
@@ -960,24 +895,16 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       _pageState = LicensePageState.checking;
     });
 
-    bool success = false;
     try {
       await DatabaseHelper.reset();
       DatabaseHelper.forceCreate = true;
       await DatabaseHelper.db;
       await DatabaseHelper.checkAndMigrate();
-      success = true;
     } catch (e) {
       debugPrint("Error creating new database: $e");
     }
 
-    if (success) {
-      setState(() {
-        _pageState = LicensePageState.complaintNumberInput;
-      });
-    } else {
-      _checkLicense();
-    }
+    _checkLicense();
   }
 
   Future<void> _handleRestoreDatabase() async {
@@ -1054,142 +981,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     _checkLicense();
   }
 
-  Widget _buildComplaintNumberInputScreen() {
-    final isDark = AppTheme.isDark(context);
-    final primaryColor = const Color(0xFFD4AF37);
-    final textColor = isDark ? Colors.white : const Color(0xFF1A2A3A);
-    final textMutedColor = isDark ? Colors.white70 : const Color(0xFF4A5D6E);
-
-    return _buildCard(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: primaryColor.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: primaryColor.withValues(alpha: 0.5),
-              width: 2,
-            ),
-          ),
-          child: Icon(
-            Icons.contact_phone_rounded,
-            color: primaryColor,
-            size: 48,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          "تهيئة رقم الشكاوى",
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: primaryColor,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "يرجى إدخال رقم الشكاوى والاتصال الخاص بالمحل لاعتماده في فواتير الصيانة والرسائل النصية.",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 14,
-            color: textMutedColor,
-            height: 1.5,
-          ),
-        ),
-        const Divider(height: 30, thickness: 1, color: Colors.grey),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            "رقم الشكاوى:",
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _complaintController,
-          keyboardType: TextInputType.phone,
-          style: TextStyle(color: textColor, fontSize: 16),
-          decoration: InputDecoration(
-            hintText: "مثال: 01552199854",
-            prefixIcon: Icon(Icons.phone_android_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
-          ),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: const Color(0xFF1A2A3A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              elevation: 3,
-            ),
-            onPressed: _handleSaveComplaintNumber,
-            child: const Text(
-              "حفظ ومتابعة",
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _handleSaveComplaintNumber() async {
-    final number = _complaintController.text.trim();
-    if (number.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "الرجاء إدخال رقم شكاوى صالح",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 16),
-          ),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return;
-    }
-
-    try {
-      await DatabaseHelper.saveSetting('complaintNumber', number);
-      DatabaseHelper.complaintNumber = number;
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "✅ تم حفظ رقم الشكاوى الجديد بنجاح!",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 16),
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      debugPrint("Error saving complaint number setting: $e");
-    }
-
-    if (!mounted) return;
-    _checkLicense();
-  }
-
   Widget _buildCard({required List<Widget> children}) {
     final isDark = AppTheme.isDark(context);
     final primaryColor = const Color(0xFFD4AF37);
@@ -1238,6 +1029,8 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     return regExp.hasMatch(email.trim().toLowerCase());
   }
 
+
+
   Future<void> _handleRegister() async {
     final username = _regUsernameController.text.trim();
     final email = _regEmailController.text.trim();
@@ -1253,8 +1046,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
 
     if (!_isValidGmail(email)) {
       setState(() {
-        _regError =
-            "يجب أن يكون البريد الإلكتروني حساب Gmail صالحاً (ينتهي بـ @gmail.com)";
+        _regError = "يجب أن يكون البريد الإلكتروني حساب Gmail صالحاً (ينتهي بـ @gmail.com)";
       });
       return;
     }
@@ -1286,7 +1078,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       await DatabaseHelper.saveClientHwid(_hwid);
       await DatabaseHelper.saveClientEmail(email);
       await DatabaseHelper.saveClientPasswordHash(hashed);
-
+      
       final newUser = AppUser(
         email: email,
         passwordHash: hashed,
@@ -1294,7 +1086,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       );
       await DatabaseHelper.saveUser(newUser);
       currentLoggedInUser = newUser;
-
+      
       setState(() {
         _registering = false;
         _pageState = LicensePageState.authenticated;
@@ -1398,8 +1190,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       if (((storedEmail?.trim().toLowerCase() == email.toLowerCase()) || 
            (storedName?.trim().toLowerCase() == email.toLowerCase())) &&
           storedHash == enteredHash && storedEmail != null) {
-        final newMgr =
-            AppUser(email: storedEmail, passwordHash: enteredHash, role: 'manager');
+        final newMgr = AppUser(email: storedEmail, passwordHash: enteredHash, role: 'manager');
         await DatabaseHelper.saveUser(newMgr);
         currentLoggedInUser = newMgr;
         isLoginValid = true;
@@ -1418,6 +1209,8 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       });
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1466,8 +1259,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
         return _buildLoginScreen();
       case LicensePageState.dbMissing:
         return _buildDbMissingScreen();
-      case LicensePageState.complaintNumberInput:
-        return _buildComplaintNumberInputScreen();
       default:
         return _buildActivationScreen();
     }
@@ -1561,8 +1352,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                     backgroundColor: primaryColor.withValues(alpha: 0.2),
                     foregroundColor: primaryColor,
                     elevation: 0,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -1584,10 +1374,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                   icon: const Icon(Icons.copy, size: 16),
                   label: const Text(
                     "نسخ",
-                    style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -1618,8 +1405,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
               color: isDark ? Colors.white30 : Colors.black38,
               letterSpacing: 1.2,
             ),
-            suffixIcon:
-                Icon(Icons.key, color: primaryColor.withValues(alpha: 0.7)),
+            suffixIcon: Icon(Icons.key, color: primaryColor.withValues(alpha: 0.7)),
           ),
           onChanged: (_) {
             if (_errorMessage.isNotEmpty) {
@@ -1662,8 +1448,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
                     ),
                   )
                 : const Text(
@@ -1691,8 +1476,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.headset_mic_rounded,
-                      color: primaryColor, size: 20),
+                  Icon(Icons.headset_mic_rounded, color: primaryColor, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     "للحصول على مفتاح التفعيل، يرجى التواصل مع الدعم الفني:",
@@ -1787,8 +1571,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "أدخل اسم المستخدم أو اسم المحل",
-            prefixIcon: Icon(Icons.person_outline_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.person_outline_rounded, color: primaryColor.withValues(alpha: 0.7)),
           ),
         ),
         const SizedBox(height: 16),
@@ -1813,8 +1596,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "example@gmail.com",
-            prefixIcon: Icon(Icons.mail_outline_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.mail_outline_rounded, color: primaryColor.withValues(alpha: 0.7)),
           ),
         ),
         const SizedBox(height: 16),
@@ -1839,13 +1621,10 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "أدخل كلمة المرور (8 أحرف على الأقل)",
-            prefixIcon: Icon(Icons.lock_outline_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.lock_outline_rounded, color: primaryColor.withValues(alpha: 0.7)),
             suffixIcon: IconButton(
               icon: Icon(
-                _regPasswordVisible
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
+                _regPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: textColor.withValues(alpha: 0.6),
               ),
               onPressed: () {
@@ -1878,13 +1657,10 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "أعد إدخال كلمة المرور للتأكيد",
-            prefixIcon: Icon(Icons.lock_clock_outlined,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.lock_clock_outlined, color: primaryColor.withValues(alpha: 0.7)),
             suffixIcon: IconButton(
               icon: Icon(
-                _regConfirmPasswordVisible
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
+                _regConfirmPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: textColor.withValues(alpha: 0.6),
               ),
               onPressed: () {
@@ -1900,7 +1676,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
             }
           },
         ),
-
+        
         if (_regError.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
@@ -1936,8 +1712,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
                     ),
                   )
                 : const Text(
@@ -2030,8 +1805,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "أدخل البريد الإلكتروني أو اسم المستخدم",
-            prefixIcon: Icon(Icons.mail_outline_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.mail_outline_rounded, color: primaryColor.withValues(alpha: 0.7)),
           ),
         ),
         const SizedBox(height: 16),
@@ -2056,13 +1830,10 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
           style: TextStyle(color: textColor, fontSize: 16),
           decoration: InputDecoration(
             hintText: "أدخل كلمة المرور الخاصة بك",
-            prefixIcon: Icon(Icons.lock_outline_rounded,
-                color: primaryColor.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.lock_outline_rounded, color: primaryColor.withValues(alpha: 0.7)),
             suffixIcon: IconButton(
               icon: Icon(
-                _loginPasswordVisible
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
+                _loginPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: textColor.withValues(alpha: 0.6),
               ),
               onPressed: () {
@@ -2113,8 +1884,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A2A3A)),
                     ),
                   )
                 : const Text(
@@ -2179,7 +1949,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-
+    
     final allMenuItems = [
       MenuItemDef(
         title: 'لوحة التحكم الإجمالية',
@@ -2201,12 +1971,6 @@ class _MainScreenState extends State<MainScreen> {
         title: '💵 بيع منتج من المحل',
         icon: Icons.point_of_sale_rounded,
         view: const SalesView(),
-        allowedRoles: ['manager', 'staff'],
-      ),
-      MenuItemDef(
-        title: '🔄 المرتجعات',
-        icon: Icons.assignment_return_rounded,
-        view: const ReturnsView(),
         allowedRoles: ['manager', 'staff'],
       ),
       MenuItemDef(
@@ -2278,8 +2042,7 @@ class _MainScreenState extends State<MainScreen> {
     ];
 
     final role = currentLoggedInUser?.role ?? 'manager';
-    _filteredMenuItems =
-        allMenuItems.where((item) => item.allowedRoles.contains(role)).toList();
+    _filteredMenuItems = allMenuItems.where((item) => item.allowedRoles.contains(role)).toList();
     _selectedIndex = 0;
   }
 
@@ -2300,8 +2063,7 @@ class _MainScreenState extends State<MainScreen> {
         break;
     }
     if (targetTitle != null) {
-      final idx =
-          _filteredMenuItems.indexWhere((item) => item.title == targetTitle);
+      final idx = _filteredMenuItems.indexWhere((item) => item.title == targetTitle);
       if (idx != -1) {
         setState(() {
           _selectedIndex = idx;
@@ -2319,8 +2081,7 @@ class _MainScreenState extends State<MainScreen> {
 
   void _toggleTheme() async {
     final current = themeNotifier.value;
-    final newMode =
-        current == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    final newMode = current == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     themeNotifier.value = newMode;
     await ThemeSettingsService.save(newMode);
   }
@@ -2329,8 +2090,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final isDark = AppTheme.isDark(context);
     final textColor = AppTheme.text(context);
-    final sidebarBg =
-        isDark ? const Color(0xFF16222F) : const Color(0xFFEAF0F6);
+    final sidebarBg = isDark ? const Color(0xFF16222F) : const Color(0xFFEAF0F6);
     final activeBg = isDark ? const Color(0xFF1E2F41) : Colors.white;
     final primaryGold = const Color(0xFFD4AF37);
 
@@ -2348,8 +2108,7 @@ class _MainScreenState extends State<MainScreen> {
                 children: [
                   // App Branding / Header
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 24, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                     child: Column(
                       children: [
                         const Icon(
@@ -2390,8 +2149,7 @@ class _MainScreenState extends State<MainScreen> {
                         final item = _filteredMenuItems[index];
                         final isSelected = _selectedIndex == index;
                         return Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 4, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
                           child: InkWell(
                             onTap: () {
                               setState(() {
@@ -2401,26 +2159,19 @@ class _MainScreenState extends State<MainScreen> {
                             borderRadius: BorderRadius.circular(10),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 12, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                               decoration: BoxDecoration(
-                                color:
-                                    isSelected ? activeBg : Colors.transparent,
+                                color: isSelected ? activeBg : Colors.transparent,
                                 borderRadius: BorderRadius.circular(10),
                                 border: isSelected
-                                    ? Border.all(
-                                        color:
-                                            primaryGold.withValues(alpha: 0.5),
-                                        width: 1)
+                                    ? Border.all(color: primaryGold.withValues(alpha: 0.5), width: 1)
                                     : null,
                               ),
                               child: Row(
                                 children: [
                                   Icon(
                                     item.icon,
-                                    color: isSelected
-                                        ? primaryGold
-                                        : textColor.withValues(alpha: 0.7),
+                                    color: isSelected ? primaryGold : textColor.withValues(alpha: 0.7),
                                     size: 22,
                                   ),
                                   const SizedBox(width: 16),
@@ -2429,12 +2180,8 @@ class _MainScreenState extends State<MainScreen> {
                                       item.title,
                                       style: TextStyle(
                                         fontSize: 15,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: isSelected
-                                            ? primaryGold
-                                            : textColor,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                        color: isSelected ? primaryGold : textColor,
                                         fontFamily: 'Cairo',
                                       ),
                                     ),
@@ -2459,18 +2206,13 @@ class _MainScreenState extends State<MainScreen> {
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(
-                            isDark
-                                ? Icons.light_mode_rounded
-                                : Icons.dark_mode_rounded,
+                            isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
                             color: primaryGold,
                             size: 20,
                           ),
                           title: Text(
                             isDark ? 'الوضع المضيء' : 'الوضع الداكن',
-                            style: TextStyle(
-                                color: textColor,
-                                fontSize: 14,
-                                fontFamily: 'Cairo'),
+                            style: TextStyle(color: textColor, fontSize: 14, fontFamily: 'Cairo'),
                           ),
                           onTap: _toggleTheme,
                         ),
@@ -2485,10 +2227,7 @@ class _MainScreenState extends State<MainScreen> {
                           ),
                           title: Text(
                             'إعدادات الطابعة',
-                            style: TextStyle(
-                                color: textColor,
-                                fontSize: 14,
-                                fontFamily: 'Cairo'),
+                            style: TextStyle(color: textColor, fontSize: 14, fontFamily: 'Cairo'),
                           ),
                           onTap: _showPrinterSettings,
                         ),
@@ -2503,10 +2242,7 @@ class _MainScreenState extends State<MainScreen> {
                           ),
                           title: const Text(
                             'تسجيل الخروج',
-                            style: TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 14,
-                                fontFamily: 'Cairo'),
+                            style: TextStyle(color: Colors.redAccent, fontSize: 14, fontFamily: 'Cairo'),
                           ),
                           onTap: widget.onLogout,
                         ),
@@ -2534,6 +2270,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 }
+
 
 class TicketCard extends StatefulWidget {
   final Ticket ticket;
@@ -2567,12 +2304,10 @@ class _TicketCardState extends State<TicketCard> {
   void _showBuyDeviceDialog(BuildContext context, Ticket ticket) async {
     final costController = TextEditingController(text: '0.0');
     final priceController = TextEditingController(text: '0.0');
-    final imeiController =
-        TextEditingController(text: ticket.complaintNumber ?? '');
-
+    final imeiController = TextEditingController(text: ticket.complaintNumber ?? '');
+    
     final warehouses = await DatabaseHelper.loadWarehouses();
-    String selectedWarehouse =
-        warehouses.isNotEmpty ? warehouses.first.name : 'المحل الرئيسي';
+    String selectedWarehouse = warehouses.isNotEmpty ? warehouses.first.name : 'المحل الرئيسي';
 
     if (!context.mounted) return;
 
@@ -2587,19 +2322,14 @@ class _TicketCardState extends State<TicketCard> {
             textDirection: TextDirection.rtl,
             child: AlertDialog(
               backgroundColor: AppTheme.cardBg(context),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
-                  Icon(Icons.shopping_bag_outlined,
-                      color: primaryGold, size: 24),
+                  Icon(Icons.shopping_bag_outlined, color: primaryGold, size: 24),
                   const SizedBox(width: 8),
                   Text(
                     'شراء جهاز عميل للمستعمل',
-                    style: TextStyle(
-                        color: primaryGold,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
+                    style: TextStyle(color: primaryGold, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -2611,47 +2341,35 @@ class _TicketCardState extends State<TicketCard> {
                     children: [
                       Text(
                         'جهاز: ${ticket.deviceModel}\nالعميل: ${ticket.customerName}',
-                        style: TextStyle(
-                            color: textColor,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold),
+                        style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 16),
                       TextField(
                         controller: costController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         style: TextStyle(color: textColor),
-                        decoration: const InputDecoration(
-                            labelText: 'سعر الشراء من العميل (ج.م) *'),
+                        decoration: const InputDecoration(labelText: 'سعر الشراء من العميل (ج.م) *'),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: priceController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         style: TextStyle(color: textColor),
-                        decoration: const InputDecoration(
-                            labelText: 'سعر البيع المقترح للمستعمل (ج.م) *'),
+                        decoration: const InputDecoration(labelText: 'سعر البيع المقترح للمستعمل (ج.م) *'),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: imeiController,
                         style: TextStyle(color: textColor),
-                        decoration: const InputDecoration(
-                            labelText: 'رقم السيريال / IMEI'),
+                        decoration: const InputDecoration(labelText: 'رقم السيريال / IMEI'),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         initialValue: selectedWarehouse,
                         dropdownColor: AppTheme.cardBg(context),
                         style: TextStyle(color: textColor, fontSize: 16),
-                        decoration:
-                            const InputDecoration(labelText: 'المخزن *'),
-                        items: warehouses
-                            .map((w) => DropdownMenuItem(
-                                value: w.name, child: Text(w.name)))
-                            .toList(),
+                        decoration: const InputDecoration(labelText: 'المخزن *'),
+                        items: warehouses.map((w) => DropdownMenuItem(value: w.name, child: Text(w.name))).toList(),
                         onChanged: (val) {
                           setDialogState(() {
                             selectedWarehouse = val!;
@@ -2665,9 +2383,7 @@ class _TicketCardState extends State<TicketCard> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('إلغاء',
-                      style: TextStyle(
-                          color: AppTheme.textMuted(context), fontSize: 16)),
+                  child: Text('إلغاء', style: TextStyle(color: AppTheme.textMuted(context), fontSize: 16)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -2677,7 +2393,7 @@ class _TicketCardState extends State<TicketCard> {
                   onPressed: () async {
                     final cost = double.tryParse(costController.text) ?? 0.0;
                     final price = double.tryParse(priceController.text) ?? 0.0;
-
+                    
                     final device = Device(
                       model: ticket.deviceModel,
                       imei: imeiController.text.trim(),
@@ -2690,24 +2406,20 @@ class _TicketCardState extends State<TicketCard> {
                     );
 
                     await DatabaseHelper.saveDevice(device);
-
-                    widget.onStatusChanged(
-                        widget.ticket, 'bought_from_customer');
+                    
+                    widget.onStatusChanged(widget.ticket, 'bought_from_customer');
 
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                              '✅ تم شراء الجهاز بمبلغ ${cost.toStringAsFixed(2)} ج.م وتحويله للمستعمل بنجاح!'),
+                          content: Text('✅ تم شراء الجهاز بمبلغ ${cost.toStringAsFixed(2)} ج.م وتحويله للمستعمل بنجاح!'),
                           backgroundColor: Colors.green,
                         ),
                       );
                     }
                   },
-                  child: const Text('شراء وحفظ',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: const Text('شراء وحفظ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ],
             ),
@@ -2936,8 +2648,8 @@ class _TicketCardState extends State<TicketCard> {
                                   backgroundColor:
                                       Colors.purple.withValues(alpha: 0.15),
                                   foregroundColor: Colors.purpleAccent,
-                                  onPressed: () => _showBuyDeviceDialog(
-                                      context, widget.ticket),
+                                  onPressed: () =>
+                                      _showBuyDeviceDialog(context, widget.ticket),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -3286,16 +2998,14 @@ class _TicketDialogState extends State<TicketDialog> {
         TextEditingController(text: widget.ticket?.technicianPhone);
     _partsCostController =
         TextEditingController(text: widget.ticket?.partsCost.toString() ?? '0');
-    _commissionRateController = TextEditingController(
-        text: widget.ticket?.commissionRate.toString() ?? '50.0');
+    _commissionRateController =
+        TextEditingController(text: widget.ticket?.commissionRate.toString() ?? '50.0');
     _status = widget.ticket?.status ?? 'pending';
     filteredTechnicians = [];
 
-    if (widget.ticket?.partsUsed != null &&
-        widget.ticket!.partsUsed!.isNotEmpty) {
+    if (widget.ticket?.partsUsed != null && widget.ticket!.partsUsed!.isNotEmpty) {
       try {
-        _selectedParts = List<Map<String, dynamic>>.from(
-            jsonDecode(widget.ticket!.partsUsed!));
+        _selectedParts = List<Map<String, dynamic>>.from(jsonDecode(widget.ticket!.partsUsed!));
       } catch (e) {
         debugPrint('Error decoding partsUsed: $e');
       }
@@ -3361,8 +3071,7 @@ class _TicketDialogState extends State<TicketDialog> {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: AppTheme.cardBg(context),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               title: const Text('إضافة قطعة غيار للإيصال',
                   style: TextStyle(color: Color(0xFFD4AF37), fontSize: 20)),
               content: Column(
@@ -3370,16 +3079,14 @@ class _TicketDialogState extends State<TicketDialog> {
                 children: [
                   DropdownButtonFormField<SparePart>(
                     dropdownColor: AppTheme.cardBg(context),
-                    style:
-                        TextStyle(color: AppTheme.text(context), fontSize: 16),
+                    style: TextStyle(color: AppTheme.text(context), fontSize: 16),
                     decoration: const InputDecoration(
                       labelText: 'اختر قطعة الغيار من المستودع',
                     ),
                     items: widget.spareParts.map((p) {
                       return DropdownMenuItem<SparePart>(
                         value: p,
-                        child: Text(
-                            '${p.name} (المتاح: ${p.quantity} - السعر: ${p.price} ج.م)'),
+                        child: Text('${p.name} (المتاح: ${p.quantity} - السعر: ${p.price} ج.م)'),
                       );
                     }).toList(),
                     onChanged: (val) {
@@ -3391,8 +3098,7 @@ class _TicketDialogState extends State<TicketDialog> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: qtyController,
-                    style:
-                        TextStyle(color: AppTheme.text(context), fontSize: 16),
+                    style: TextStyle(color: AppTheme.text(context), fontSize: 16),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'الكمية المطلوبة',
@@ -3407,8 +3113,7 @@ class _TicketDialogState extends State<TicketDialog> {
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: Text('إلغاء',
-                      style: TextStyle(
-                          color: AppTheme.textMuted(context), fontSize: 16)),
+                      style: TextStyle(color: AppTheme.textMuted(context), fontSize: 16)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -3417,8 +3122,7 @@ class _TicketDialogState extends State<TicketDialog> {
                   ),
                   onPressed: () {
                     if (selectedInventoryPart != null) {
-                      final existingIndex = _selectedParts.indexWhere(
-                          (p) => p['partId'] == selectedInventoryPart!.id);
+                      final existingIndex = _selectedParts.indexWhere((p) => p['partId'] == selectedInventoryPart!.id);
                       setState(() {
                         if (existingIndex != -1) {
                           _selectedParts[existingIndex]['quantity'] += qty;
@@ -4001,12 +3705,10 @@ class _TicketDialogState extends State<TicketDialog> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFD4AF37),
                               foregroundColor: const Color(0xFF1A2A3A),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             ),
                             icon: const Icon(Icons.add, size: 16),
-                            label: const Text('إضافة قطعة',
-                                style: TextStyle(fontSize: 13)),
+                            label: const Text('إضافة قطعة', style: TextStyle(fontSize: 13)),
                             onPressed: () {
                               _showAddPartToTicketDialog();
                             },
@@ -4017,8 +3719,7 @@ class _TicketDialogState extends State<TicketDialog> {
                       if (_selectedParts.isEmpty)
                         Text(
                           'لا توجد قطع غيار مضافة حالياً.',
-                          style: TextStyle(
-                              color: AppTheme.textMuted(context), fontSize: 14),
+                          style: TextStyle(color: AppTheme.textMuted(context), fontSize: 14),
                         )
                       else
                         ListView.builder(
@@ -4029,19 +3730,13 @@ class _TicketDialogState extends State<TicketDialog> {
                             final item = _selectedParts[index];
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(item['name'],
-                                  style: TextStyle(
-                                      color: AppTheme.text(context),
-                                      fontSize: 16)),
+                              title: Text(item['name'], style: TextStyle(color: AppTheme.text(context), fontSize: 16)),
                               subtitle: Text(
                                 'الكمية: ${item['quantity']} | السعر: ${item['price']} ج.م',
-                                style: TextStyle(
-                                    color: AppTheme.textMuted(context),
-                                    fontSize: 14),
+                                style: TextStyle(color: AppTheme.textMuted(context), fontSize: 14),
                               ),
                               trailing: IconButton(
-                                icon: const Icon(Icons.delete,
-                                    color: Colors.red, size: 20),
+                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
                                 onPressed: () {
                                   setState(() {
                                     _selectedParts.removeAt(index);
@@ -4188,8 +3883,8 @@ class _TicketDialogState extends State<TicketDialog> {
                                     color: AppTheme.textMuted(context),
                                     fontSize: 16)),
                             const SizedBox(width: 8),
-                            Text(DatabaseHelper.complaintNumber,
-                                style: const TextStyle(
+                            const Text('01000361006',
+                                style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFFD4AF37))),
@@ -4232,15 +3927,9 @@ class _TicketDialogState extends State<TicketDialog> {
                               'technicianName': _technicianNameController.text,
                               'technicianPhone':
                                   _technicianPhoneController.text,
-                              'partsCost':
-                                  double.tryParse(_partsCostController.text) ??
-                                      0.0,
-                              'partsUsed': _selectedParts.isNotEmpty
-                                  ? jsonEncode(_selectedParts)
-                                  : null,
-                              'commissionRate': double.tryParse(
-                                      _commissionRateController.text) ??
-                                  50.0,
+                              'partsCost': double.tryParse(_partsCostController.text) ?? 0.0,
+                              'partsUsed': _selectedParts.isNotEmpty ? jsonEncode(_selectedParts) : null,
+                              'commissionRate': double.tryParse(_commissionRateController.text) ?? 50.0,
                             });
                             Navigator.pop(context);
                           }
@@ -4572,11 +4261,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     required String? selectedValue,
     required ValueChanged<String?> onChanged,
   }) {
-    final names = _printers
-        .map((p) => p.name)
-        .whereType<String>()
-        .where((n) => n.isNotEmpty)
-        .toList();
+    final names = _printers.map((p) => p.name).whereType<String>().where((n) => n.isNotEmpty).toList();
     if (selectedValue != null &&
         selectedValue.isNotEmpty &&
         !names.contains(selectedValue)) {
