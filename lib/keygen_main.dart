@@ -348,7 +348,7 @@ class _KeygenScreenState extends State<KeygenScreen> {
       }
 
       const scriptUrlStr = 'https://script.google.com/macros/s/AKfycbymgT4dNqdfNvXHNv8bFpkWxAwShpVnIl19wWyeReywMMxJZrUHnbX-I9903RS72d6fSA/exec';
-      final response = await http.post(
+      final response = await _postToScript(
         Uri.parse(scriptUrlStr),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
@@ -382,6 +382,46 @@ class _KeygenScreenState extends State<KeygenScreen> {
 
   Future<void> _scanClientBranches() async {
     // تم إلغاء ربط جيت هب والاعتماد على Google Sheets بالكامل
+  }
+
+  Future<http.Response> _postToScript(Uri url, {Map<String, String>? headers, Object? body, Duration timeout = const Duration(seconds: 15)}) async {
+    final client = http.Client();
+    try {
+      var request = http.Request('POST', url);
+      if (headers != null) request.headers.addAll(headers);
+      if (body != null) {
+        if (body is String) {
+          request.body = body;
+        } else {
+          request.body = jsonEncode(body);
+        }
+      }
+      request.followRedirects = false;
+
+      var responseStream = await client.send(request).timeout(timeout);
+      var response = await http.Response.fromStream(responseStream);
+
+      if (response.statusCode == 302 || response.statusCode == 301 || response.statusCode == 307 || response.statusCode == 308) {
+        final redirectUrlStr = response.headers['location'];
+        if (redirectUrlStr != null) {
+          final redirectUrl = Uri.parse(redirectUrlStr);
+          var redirectRequest = http.Request('POST', redirectUrl);
+          if (headers != null) redirectRequest.headers.addAll(headers);
+          if (body != null) {
+            if (body is String) {
+              redirectRequest.body = body;
+            } else {
+              redirectRequest.body = jsonEncode(body);
+            }
+          }
+          var redirectResponseStream = await client.send(redirectRequest).timeout(timeout);
+          return http.Response.fromStream(redirectResponseStream);
+        }
+      }
+      return response;
+    } finally {
+      client.close();
+    }
   }
 
   List<int> _decryptBytes(List<int> bytes, String key) {
