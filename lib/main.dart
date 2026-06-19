@@ -916,7 +916,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       };
 
       // 3. Send via POST request
-      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbz_9G9o35N7423m80n5v4A2E_12345/exec';
+      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbwOST4D39vRmr06OIbESCtZal0QSpDE4JoFCf1bBg3LiSf3XW0AFALRCuMnQrcNyxScYw/exec';
       final url = Uri.parse(scriptUrlStr);
       
       final response = await http.post(
