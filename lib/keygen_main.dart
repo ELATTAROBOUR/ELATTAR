@@ -347,7 +347,7 @@ class _KeygenScreenState extends State<KeygenScreen> {
         });
       }
 
-      const scriptUrlStr = 'https://script.google.com/macros/s/AKfycbwOST4D39vRmr06OIbESCtZal0QSpDE4JoFCf1bBg3LiSf3XW0AFALRCuMnQrcNyxScYw/exec';
+      const scriptUrlStr = 'https://script.google.com/macros/s/AKfycbymgT4dNqdfNvXHNv8bFpkWxAwShpVnIl19wWyeReywMMxJZrUHnbX-I9903RS72d6fSA/exec';
       final response = await http.post(
         Uri.parse(scriptUrlStr),
         headers: {"Content-Type": "application/json"},

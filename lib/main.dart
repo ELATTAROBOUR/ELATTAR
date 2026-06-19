@@ -568,7 +568,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
 
     // Fetch central status from Google Apps Script Web App if internet is available
     try {
-      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbwOST4D39vRmr06OIbESCtZal0QSpDE4JoFCf1bBg3LiSf3XW0AFALRCuMnQrcNyxScYw/exec';
+      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbymgT4dNqdfNvXHNv8bFpkWxAwShpVnIl19wWyeReywMMxJZrUHnbX-I9903RS72d6fSA/exec';
       final url = Uri.parse('$scriptUrlStr?hwid=$_hwid');
       final response = await http.get(url).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
@@ -899,7 +899,7 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       };
 
       // 3. Send via POST request
-      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbwOST4D39vRmr06OIbESCtZal0QSpDE4JoFCf1bBg3LiSf3XW0AFALRCuMnQrcNyxScYw/exec';
+      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbymgT4dNqdfNvXHNv8bFpkWxAwShpVnIl19wWyeReywMMxJZrUHnbX-I9903RS72d6fSA/exec';
       final url = Uri.parse(scriptUrlStr);
       
       final response = await http.post(
