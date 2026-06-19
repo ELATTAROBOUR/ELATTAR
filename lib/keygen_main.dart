@@ -381,134 +381,7 @@ class _KeygenScreenState extends State<KeygenScreen> {
   }
 
   Future<void> _scanClientBranches() async {
-    setState(() {
-      _loadingSubscribers = true;
-      _gitStatus = "جاري جلب فروع GitHub المتوفرة...";
-    });
-
-    try {
-      final fetchRes = await Process.run('git', ['fetch', '--all']);
-      if (fetchRes.exitCode != 0) {
-        throw Exception("فشل git fetch: ${fetchRes.stderr}");
-      }
-
-      final branchRes = await Process.run('git', ['branch', '-r']);
-      if (branchRes.exitCode != 0) {
-        throw Exception("فشل قراءة قائمة الفروع: ${branchRes.stderr}");
-      }
-
-      final output = branchRes.stdout.toString();
-      final lines = output.split(RegExp(r'[\r\n]+'));
-
-      int scannedCount = 0;
-      for (var line in lines) {
-        final cleanBranch = line.trim();
-        if (cleanBranch.isEmpty || cleanBranch.contains('origin/HEAD') || cleanBranch.contains('origin/main')) {
-          continue;
-        }
-
-        final branchName = cleanBranch.replaceAll('origin/', '');
-        setState(() {
-          _gitStatus = "جاري استخراج قاعدة بيانات الفرع: $branchName...";
-        });
-
-        final tempDbFile = File("${Directory.current.path}/temp_$branchName.db");
-        
-        // Extract database file from that branch
-        final showRes = await Process.run('git', ['show', '$cleanBranch:ELATTAR_STORE.db'], stdoutEncoding: null);
-        if (showRes.exitCode == 0) {
-          final bytes = showRes.stdout as List<int>;
-          await tempDbFile.writeAsBytes(bytes);
-
-          // Open the database in read-only mode to extract info
-          final db = await databaseFactory.openDatabase(tempDbFile.path);
-          try {
-            String? clientName;
-            String? clientEmail;
-            String? clientHwid;
-
-            final List<Map<String, dynamic>> settingsList = await db.query('settings');
-            for (var row in settingsList) {
-              final key = row['key']?.toString();
-              final val = row['value']?.toString();
-              if (key == 'clientName') clientName = val;
-              if (key == 'clientEmail') clientEmail = val;
-              if (key == 'clientHwid') clientHwid = val;
-            }
-
-            final List<Map<String, dynamic>> usersList = await db.query('users');
-            final createdUsers = usersList.map((row) {
-              return {
-                'email': row['email']?.toString() ?? '',
-                'role': row['role']?.toString() ?? 'staff',
-              };
-            }).toList();
-
-            // Try to extract HWID from activationKey if not stored explicitly
-            if (clientHwid == null || clientHwid.isEmpty) {
-              final actKeyRow = settingsList.firstWhere(
-                (r) => r['key'] == 'activationKey',
-                orElse: () => {},
-              );
-              final actKey = actKeyRow['value']?.toString();
-              if (actKey != null && actKey.isNotEmpty) {
-                try {
-                  final cleanKey = actKey.replaceAll('-', '').toUpperCase();
-                  final decryptedBytes = _decryptBytes(Base32.decode(cleanKey)!, "ELATTAR_STORE_SECURE_SALT_2026");
-                  final decryptedStr = utf8.decode(decryptedBytes);
-                  clientHwid = decryptedStr.split('|')[0];
-                } catch (_) {}
-              }
-            }
-
-            if (clientEmail != null && clientEmail.isNotEmpty) {
-              clientHwid ??= "UNKNOWN-$branchName";
-
-              int existingIndex = _subscribers.indexWhere((sub) {
-                final subH = sub['hwid']?.toString().replaceAll('-', '').toUpperCase();
-                final curH = clientHwid?.replaceAll('-', '').toUpperCase();
-                return subH == curH;
-              });
-
-              if (existingIndex != -1) {
-                _subscribers[existingIndex]['clientName'] = clientName ?? _subscribers[existingIndex]['clientName'] ?? branchName;
-                _subscribers[existingIndex]['registeredEmail'] = clientEmail;
-                _subscribers[existingIndex]['createdUsers'] = createdUsers;
-              } else {
-                _subscribers.add({
-                  'hwid': clientHwid,
-                  'clientName': clientName ?? branchName,
-                  'registeredEmail': clientEmail,
-                  'status': 'active',
-                  'expiryDate': 'LIFETIME',
-                  'createdUsers': createdUsers,
-                });
-              }
-              scannedCount++;
-            }
-          } catch (e) {
-            debugPrint("Error parsing data for branch $branchName: $e");
-          } finally {
-            await db.close();
-            try {
-              await tempDbFile.delete();
-            } catch (_) {}
-          }
-        }
-      }
-
-      setState(() {
-        _gitStatus = "تم استيراد وتحديث $scannedCount مشتركين من الفروع بنجاح! 🚀";
-      });
-    } catch (e) {
-      setState(() {
-        _gitStatus = "حدث خطأ أثناء فحص الفروع: $e ❌";
-      });
-    } finally {
-      setState(() {
-        _loadingSubscribers = false;
-      });
-    }
+    // تم إلغاء ربط جيت هب والاعتماد على Google Sheets بالكامل
   }
 
   List<int> _decryptBytes(List<int> bytes, String key) {
@@ -1038,7 +911,7 @@ class _KeygenScreenState extends State<KeygenScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Search and Git Actions Control Panel
+          // Control Panel
           Card(
             color: cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1062,17 +935,10 @@ class _KeygenScreenState extends State<KeygenScreen> {
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E2F41), foregroundColor: Colors.blueAccent),
-                    onPressed: _loadingSubscribers ? null : _scanClientBranches,
-                    icon: const Icon(Icons.sync_rounded),
-                    label: const Text("تحديث من فروع Git"),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: const Color(0xFF0D131E)),
                     onPressed: _loadingSubscribers ? null : _saveAndPushSubscribers,
                     icon: const Icon(Icons.cloud_upload_rounded),
-                    label: const Text("حفظ ورفع لـ GitHub"),
+                    label: const Text("حفظ وتحديث السحابة (Google Sheets)"),
                   ),
                 ],
               ),
