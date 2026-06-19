@@ -566,31 +566,18 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     bool hwidFoundInCentral = false;
     String? centralError;
 
-    // Fetch central subscribers.db from GitHub if internet is available
+    // Fetch central status from Google Apps Script Web App if internet is available
     try {
-      final url = Uri.parse('https://raw.githubusercontent.com/mojlinux58/ELATTAR/DB_SUB/keygen/subscribers.db');
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      final scriptUrlStr = await DatabaseHelper.getSetting('activationScriptUrl') ?? 'https://script.google.com/macros/s/AKfycbwOST4D39vRmr06OIbESCtZal0QSpDE4JoFCf1bBg3LiSf3XW0AFALRCuMnQrcNyxScYw/exec';
+      final url = Uri.parse('$scriptUrlStr?hwid=$_hwid');
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
-        githubCheckAttempted = true;
-        final tempDir = await getTemporaryDirectory();
-        final tempDbFile = File('${tempDir.path}/temp_subscribers.db');
-        await tempDbFile.writeAsBytes(response.bodyBytes);
-
-        // Open central SQLite database
-        final db = await databaseFactory.openDatabase(tempDbFile.path);
-        
-        final cleanHwid = _hwid.replaceAll('-', '').toUpperCase();
-        final List<Map<String, dynamic>> results = await db.query(
-          'subscribers',
-          where: 'UPPER(REPLACE(hwid, "-", "")) = ?',
-          whereArgs: [cleanHwid],
-        );
-
-        if (results.isNotEmpty) {
+        final resData = jsonDecode(response.body);
+        if (resData['status'] == 'success' && resData['found'] == true) {
+          githubCheckAttempted = true;
           hwidFoundInCentral = true;
-          final clientData = results.first;
-          final status = clientData['status']?.toString().toLowerCase();
-          final expiry = clientData['expiryDate']?.toString();
+          final status = resData['clientStatus']?.toString().toLowerCase();
+          final expiry = resData['expiryDate']?.toString();
 
           if (status == 'blocked' || status == 'محظور') {
             centralError = "تم حظر هذا الاشتراك لعدم سداد المستحقات أو لمخالفة الشروط. يرجى التواصل مع الدعم الفني.";
@@ -633,10 +620,6 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
             }
           }
         }
-        await db.close();
-        try {
-          await tempDbFile.delete();
-        } catch (_) {}
       }
     } catch (e) {
       debugPrint("Central subscription check failed/timed out: $e");
