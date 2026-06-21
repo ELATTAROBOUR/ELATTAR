@@ -1,0 +1,13 @@
+name: elattar_api_server
+description: "REST API server for ELATTAR Store - connects web app to SQLite database"
+version: 1.0.0
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
+  sqlite3: ^2.6.0
+  crypto: ^3.0.7
+  intl: ^0.20.2
