@@ -1,0 +1,20 @@
+[build]
+  command = "cd webapp && flutter build web --release --no-wasm-dry-run"
+  publish = "webapp/build/web"
+
+# Handle SPA routing (redirect all 404s to index.html for Flutter)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Ensure proper headers for WASM and JS files
+[[headers]]
+  for = "*.wasm"
+  [headers.values]
+    Content-Type = "application/wasm"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Content-Type = "application/javascript"

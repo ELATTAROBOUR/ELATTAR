@@ -1,0 +1,6 @@
+# Cloudflare Pages headers for Flutter Web + SQLite WASM
+/*.wasm
+  Content-Type: application/wasm
+
+/*.js
+  Content-Type: application/javascript
