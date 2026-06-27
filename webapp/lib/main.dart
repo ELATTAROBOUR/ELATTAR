@@ -2981,9 +2981,7 @@ class _MainScreenState extends State<MainScreen> {
       EscPosPrintService.receiptPrinterType,
     );
     if (labelOk || receiptOk) {
-      debugPrint(
-        'Printer auto-reconnect: label=$labelOk receipt=$receiptOk',
-      );
+      debugPrint('Printer auto-reconnect: label=$labelOk receipt=$receiptOk');
     }
   }
 

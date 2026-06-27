@@ -24,7 +24,11 @@ String jsPrintIsConnected(String type) {
   return '{"connected":false}';
 }
 
-Future<String> jsPrintAutoReconnect(String type) async {
+Future<String> jsPrintAutoReconnect(
+  String type, {
+  int? vendorId,
+  int? productId,
+}) async {
   return '{"success": false}';
 }
 

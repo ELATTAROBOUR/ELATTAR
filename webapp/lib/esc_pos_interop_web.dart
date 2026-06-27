@@ -26,7 +26,11 @@ external JSPromise _jsDisconnect(JSString type);
 external String _jsIsConnected(JSString type);
 
 @JS('__printerAutoReconnect')
-external JSPromise _jsAutoReconnect(JSString type);
+external JSPromise _jsAutoReconnect(
+  JSString type,
+  JSNumber? usbVendorId,
+  JSNumber? usbProductId,
+);
 
 @JS('navigator.serial')
 external JSObject? get _jsSerial;
@@ -72,9 +76,18 @@ String jsPrintIsConnected(String type) {
 }
 
 /// Auto-reconnect to previously authorized USB printers without showing a dialog.
-Future<String> jsPrintAutoReconnect(String type) async {
+/// Uses saved vendor/product IDs to find the matching port.
+Future<String> jsPrintAutoReconnect(
+  String type, {
+  int? vendorId,
+  int? productId,
+}) async {
   try {
-    final result = await _jsAutoReconnect(type.toJS).toDart;
+    final result = await _jsAutoReconnect(
+      type.toJS,
+      vendorId?.toJS,
+      productId?.toJS,
+    ).toDart;
     return result.toString();
   } catch (e) {
     return '{"success": false, "error": "$e"}';

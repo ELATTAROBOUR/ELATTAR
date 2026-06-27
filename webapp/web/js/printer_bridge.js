@@ -19,7 +19,12 @@ async function __printerConnect(type, usbVendorId, usbProductId) {
   try {
     const filters = [];
     if (usbVendorId != null) {
-      filters.push({ usbVendorId, usbProductId });
+      // Only include usbProductId if it's a valid non-null value
+      const filter = { usbVendorId };
+      if (usbProductId != null) {
+        filter.usbProductId = usbProductId;
+      }
+      filters.push(filter);
     }
     const port = await navigator.serial.requestPort({
       filters: filters.length > 0 ? filters : undefined,
@@ -109,57 +114,58 @@ function __printerIsConnected(type) {
 }
 
 /**
- * Auto-reconnect to previously authorized USB printers without showing a browser dialog.
- * Iterates through all ports the user has previously granted access to,
- * opens them and stores them keyed by type.
- * @param {string} type - Printer type key to store the first found port under
- * @returns {string} JSON: { success, count }
+ * Auto-reconnect to a previously authorized USB printer without showing a browser dialog.
+ * Uses saved USB vendor/product IDs to find and reopen the matching port.
+ * @param {string} type - Printer type key ('label' or 'receipt')
+ * @param {number|null} usbVendorId - USB vendor ID to match
+ * @param {number|null} usbProductId - USB product ID to match
+ * @returns {string} JSON: { success, vendorId?, productId?, error? }
  */
-async function __printerAutoReconnect(type) {
+async function __printerAutoReconnect(type, usbVendorId, usbProductId) {
   try {
     // Check if already connected for this type
     if (window.__printerConnections[type] && window.__printerConnections[type].port) {
-      return JSON.stringify({ success: true, count: 1 });
+      return JSON.stringify({ success: true });
     }
 
     const ports = await navigator.serial.getPorts();
     if (!ports || ports.length === 0) {
-      return JSON.stringify({ success: false, count: 0 });
+      return JSON.stringify({ success: false, error: 'No previously authorized ports' });
     }
 
-    // Try to open the first available port and store it under the given type
-    const port = ports[0];
-    await port.open({
-      baudRate: 9600,
-      dataBits: 8,
-      stopBits: 1,
-      parity: 'none',
-      flowControl: 'none',
-    });
-    const writer = port.writable.getWriter();
-    window.__printerConnections[type] = { port, writer };
+    // Find a port matching the saved vendor/product ID
+    for (const port of ports) {
+      const info = port.getInfo();
+      // If we have saved IDs, only match those; otherwise take any available port
+      if (usbVendorId != null) {
+        if (info.usbVendorId !== usbVendorId) continue;
+        if (usbProductId != null && info.usbProductId !== usbProductId) continue;
+      }
 
-    // If there's a second port, also try to open it for the opposite type
-    if (ports.length > 1) {
-      const oppositeType = type === 'label' ? 'receipt' : 'label';
-      if (!window.__printerConnections[oppositeType]) {
-        try {
-          const port2 = ports[1];
-          await port2.open({
-            baudRate: 9600,
-            dataBits: 8,
-            stopBits: 1,
-            parity: 'none',
-            flowControl: 'none',
-          });
-          const writer2 = port2.writable.getWriter();
-          window.__printerConnections[oppositeType] = { port: port2, writer: writer2 };
-        } catch (_) {}
+      // Found a matching port - try to open it
+      try {
+        await port.open({
+          baudRate: 9600,
+          dataBits: 8,
+          stopBits: 1,
+          parity: 'none',
+          flowControl: 'none',
+        });
+        const writer = port.writable.getWriter();
+        window.__printerConnections[type] = { port, writer };
+        return JSON.stringify({
+          success: true,
+          vendorId: info.usbVendorId,
+          productId: info.usbProductId,
+        });
+      } catch (_) {
+        // Port might be already open or busy - try the next one
+        continue;
       }
     }
 
-    return JSON.stringify({ success: true, count: ports.length });
+    return JSON.stringify({ success: false, error: 'No matching port found' });
   } catch (e) {
-    return JSON.stringify({ success: false, count: 0, error: e.message || String(e) });
+    return JSON.stringify({ success: false, error: e.message || String(e) });
   }
 }

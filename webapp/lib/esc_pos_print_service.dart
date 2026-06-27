@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'models.dart';
 import 'printer_settings_service.dart';
+import 'database_helper.dart';
 
 // Conditional import: use JS interop on web, stub on native
 import 'esc_pos_interop_stub.dart'
@@ -133,6 +134,7 @@ class EscPosPrintService {
   }
 
   /// Try to connect to a USB printer via Web Serial for a specific type.
+  /// On success, saves the vendor/product ID for future auto-reconnect.
   static Future<bool> connectPrinter({
     required String type,
     int? vendorId,
@@ -141,14 +143,26 @@ class EscPosPrintService {
     if (!kIsWeb || !isWebSerialAvailable()) return false;
 
     try {
-      final jsonStr = await jsPrintConnect(type, vendorId, productId);
+      // If we have saved vendor/product IDs, use them as filters
+      // so Chrome only shows the matching device
+      final savedVid = vendorId ?? await _getSavedVendorId(type);
+      final savedPid = savedVid != null
+          ? (productId ?? await _getSavedProductId(type))
+          : null;
+
+      final jsonStr = await jsPrintConnect(type, savedVid, savedPid);
       final result = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       if (result['success'] == true) {
+        final newVid = result['vendorId'] as int?;
+        final newPid = result['productId'] as int?;
         debugPrint(
-          'USB printer connected ($type): vendor=${result['vendorId']}, '
-          'product=${result['productId']}',
+          'USB printer connected ($type): vendor=$newVid, product=$newPid',
         );
+        // Save the vendor/product ID for future auto-reconnect
+        if (newVid != null) {
+          await _saveVendorId(type, newVid, newPid);
+        }
         return true;
       }
 
@@ -174,17 +188,66 @@ class EscPosPrintService {
     }
   }
 
-  /// Try to auto-reconnect to previously authorized printers without showing a dialog.
+  /// Try to auto-reconnect to a previously authorized printer without showing a dialog.
+  /// Uses saved USB vendor/product IDs to find the matching port via getPorts().
   /// Call this on app startup to restore printer connections from a previous session.
   static Future<bool> autoReconnect(String type) async {
     if (!kIsWeb || !isWebSerialAvailable()) return false;
     try {
-      final jsonStr = await jsPrintAutoReconnect(type);
+      final savedVid = await _getSavedVendorId(type);
+      final jsonStr = await jsPrintAutoReconnect(
+        type,
+        vendorId: savedVid,
+        productId: savedVid != null ? await _getSavedProductId(type) : null,
+      );
       final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['success'] == true;
+      if (result['success'] == true) {
+        // Re-save vendor/product ID (in case it changed)
+        final newVid = result['vendorId'] as int?;
+        final newPid = result['productId'] as int?;
+        if (newVid != null) {
+          await _saveVendorId(type, newVid, newPid);
+        }
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('EscPosPrintService.autoReconnect($type) error: $e');
       return false;
+    }
+  }
+
+  /// Get saved USB vendor ID for a printer type from settings
+  static Future<int?> _getSavedVendorId(String type) async {
+    try {
+      final val = await DatabaseHelper.getSetting('usb_vid_$type');
+      if (val != null && val.isNotEmpty) return int.tryParse(val);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get saved USB product ID for a printer type from settings
+  static Future<int?> _getSavedProductId(String type) async {
+    try {
+      final val = await DatabaseHelper.getSetting('usb_pid_$type');
+      if (val != null && val.isNotEmpty) return int.tryParse(val);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Save USB vendor/product IDs for a printer type
+  static Future<void> _saveVendorId(
+    String type,
+    int vendorId,
+    int? productId,
+  ) async {
+    try {
+      await DatabaseHelper.saveSetting('usb_vid_$type', vendorId.toString());
+      if (productId != null) {
+        await DatabaseHelper.saveSetting('usb_pid_$type', productId.toString());
+      }
+    } catch (e) {
+      debugPrint('Error saving USB IDs for $type: $e');
     }
   }
 
@@ -198,6 +261,32 @@ class EscPosPrintService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Get the USB vendor ID of a connected printer, or null
+  static int? getConnectedVendorId(String type) {
+    if (!kIsWeb) return null;
+    try {
+      final jsonStr = jsPrintIsConnected(type);
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      if (result['connected'] == true) {
+        return result['vendorId'] as int?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get the USB product ID of a connected printer, or null
+  static int? getConnectedProductId(String type) {
+    if (!kIsWeb) return null;
+    try {
+      final jsonStr = jsPrintIsConnected(type);
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      if (result['connected'] == true) {
+        return result['productId'] as int?;
+      }
+    } catch (_) {}
+    return null;
   }
 
   // ─── Print Functions ──────────────────────────────────────────────────────
