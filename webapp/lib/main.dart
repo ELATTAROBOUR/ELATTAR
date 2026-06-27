@@ -2977,7 +2977,7 @@ class _MainScreenState extends State<MainScreen> {
     // 1. Sync saved printer IDs from DatabaseHelper to the JS bridge.
     //    This ensures the onconnect handler in JS can auto-detect devices.
     await EscPosPrintService.setSavedDevicesInJs();
-    // 2. Try to auto-reconnect ALL printers using both Web Serial and WebUSB.
+    // 2. Try to auto-reconnect all printers.
     await EscPosPrintService.autoReconnectAll();
   }
 
@@ -6639,24 +6639,11 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 context,
                 title: 'طابعة الملصقات (XP-370B)',
                 icon: Icons.label_outline,
-                connected: EscPosPrintService.isAnyConnected(
+                connected: EscPosPrintService.isConnected(
                   EscPosPrintService.labelPrinterType,
                 ),
-                connectionLabel:
-                    EscPosPrintService.isConnected(
-                      EscPosPrintService.labelPrinterType,
-                    )
-                    ? '🖨️ متصلة (Serial)'
-                    : EscPosPrintService.isUsbConnected(
-                        EscPosPrintService.labelPrinterType,
-                      )
-                    ? '🖨️ متصلة (USB)'
-                    : 'غير متصلة',
                 onConnect: () =>
                     _connectUsbPrinter(EscPosPrintService.labelPrinterType),
-                onConnectUsb: () => _connectUsbPrinterWebUsb(
-                  EscPosPrintService.labelPrinterType,
-                ),
                 onDisconnect: () =>
                     _disconnectUsbPrinter(EscPosPrintService.labelPrinterType),
               ),
@@ -6667,24 +6654,11 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 context,
                 title: 'طابعة الفواتير (XP-80C)',
                 icon: Icons.receipt_long_outlined,
-                connected: EscPosPrintService.isAnyConnected(
+                connected: EscPosPrintService.isConnected(
                   EscPosPrintService.receiptPrinterType,
                 ),
-                connectionLabel:
-                    EscPosPrintService.isConnected(
-                      EscPosPrintService.receiptPrinterType,
-                    )
-                    ? '🖨️ متصلة (Serial)'
-                    : EscPosPrintService.isUsbConnected(
-                        EscPosPrintService.receiptPrinterType,
-                      )
-                    ? '🖨️ متصلة (USB)'
-                    : 'غير متصلة',
                 onConnect: () =>
                     _connectUsbPrinter(EscPosPrintService.receiptPrinterType),
-                onConnectUsb: () => _connectUsbPrinterWebUsb(
-                  EscPosPrintService.receiptPrinterType,
-                ),
                 onDisconnect: () => _disconnectUsbPrinter(
                   EscPosPrintService.receiptPrinterType,
                 ),
@@ -6791,9 +6765,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     required String title,
     required IconData icon,
     required bool connected,
-    required String connectionLabel,
     required VoidCallback onConnect,
-    required VoidCallback onConnectUsb,
     required VoidCallback onDisconnect,
   }) {
     return Container(
@@ -6807,121 +6779,79 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
               : Colors.transparent,
         ),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, color: const Color(0xFFD4AF37), size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Icon(icon, color: const Color(0xFFD4AF37), size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: connected
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF666666),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: connected
-                                ? const Color(0xFF4CAF50)
-                                : const Color(0xFF666666),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          connectionLabel,
-                          style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 11,
-                            color: connected
-                                ? const Color(0xFF4CAF50)
-                                : const Color(0xFF666666),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 6),
+                    Text(
+                      connected ? '🖨️ متصلة' : 'غير متصلة',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: connected
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF666666),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              if (connected)
-                SizedBox(
-                  height: 32,
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF5350),
-                      side: const BorderSide(color: Color(0xFFEF5350)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    onPressed: onDisconnect,
-                    child: const Text('قطع', style: TextStyle(fontSize: 12)),
-                  ),
-                ),
-            ],
-          ),
-          if (!connected) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 30,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFD4AF37),
-                        foregroundColor: const Color(0xFF1A2A3A),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        textStyle: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                        ),
-                      ),
-                      icon: const Icon(Icons.settings_remote, size: 14),
-                      label: const Text(
-                        'Serial',
-                        style: TextStyle(fontSize: 11),
-                      ),
-                      onPressed: onConnect,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SizedBox(
-                    height: 30,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4A90D9),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        textStyle: const TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                        ),
-                      ),
-                      icon: const Icon(Icons.usb, size: 14),
-                      label: const Text(
-                        'USB مباشر',
-                        style: TextStyle(fontSize: 11),
-                      ),
-                      onPressed: onConnectUsb,
-                    ),
-                  ),
-                ),
               ],
             ),
-          ],
+          ),
+          const SizedBox(width: 8),
+          if (connected)
+            SizedBox(
+              height: 32,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEF5350),
+                  side: const BorderSide(color: Color(0xFFEF5350)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: onDisconnect,
+                child: const Text('قطع', style: TextStyle(fontSize: 12)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 32,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: const Color(0xFF1A2A3A),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: onConnect,
+                child: const Text('توصيل', style: TextStyle(fontSize: 12)),
+              ),
+            ),
         ],
       ),
     );
@@ -6935,35 +6865,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? '✅ تم توصيل الطابعة (Serial) بنجاح'
-                  : '❌ فشل توصيل الطابعة عبر Serial',
-            ),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  Future<void> _connectUsbPrinterWebUsb(String type) async {
-    try {
-      final success = await EscPosPrintService.connectUsbPrinter(type: type);
-      if (mounted) {
-        setState(() {}); // Refresh UI
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? '✅ تم توصيل الطابعة (USB مباشر) بنجاح'
-                  : '❌ فشل توصيل الطابعة عبر USB مباشر',
+              success ? '✅ تم توصيل الطابعة بنجاح' : '❌ فشل توصيل الطابعة',
             ),
             backgroundColor: success ? Colors.green : Colors.red,
             duration: const Duration(seconds: 2),
@@ -6980,9 +6882,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   }
 
   Future<void> _disconnectUsbPrinter(String type) async {
-    // Try both disconnection methods
     await EscPosPrintService.disconnectPrinter(type);
-    await EscPosPrintService.disconnectUsbPrinter(type);
     if (mounted) {
       setState(() {}); // Refresh UI
       ScaffoldMessenger.of(context).showSnackBar(
