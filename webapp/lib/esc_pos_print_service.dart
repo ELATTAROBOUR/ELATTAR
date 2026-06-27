@@ -134,23 +134,16 @@ class EscPosPrintService {
   }
 
   /// Try to connect to a USB printer via Web Serial for a specific type.
+  /// Always shows the full device chooser (no filters) so the user can
+  /// select any connected USB/serial device.
   /// On success, saves the vendor/product ID for future auto-reconnect.
-  static Future<bool> connectPrinter({
-    required String type,
-    int? vendorId,
-    int? productId,
-  }) async {
+  static Future<bool> connectPrinter({required String type}) async {
     if (!kIsWeb || !isWebSerialAvailable()) return false;
 
     try {
-      // If we have saved vendor/product IDs, use them as filters
-      // so Chrome only shows the matching device
-      final savedVid = vendorId ?? await _getSavedVendorId(type);
-      final savedPid = savedVid != null
-          ? (productId ?? await _getSavedProductId(type))
-          : null;
-
-      final jsonStr = await jsPrintConnect(type, savedVid, savedPid);
+      // Always call with no filters so the user sees ALL serial devices
+      // and can select their printer from the chooser dialog.
+      final jsonStr = await jsPrintConnect(type, null, null);
       final result = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       if (result['success'] == true) {
@@ -190,6 +183,7 @@ class EscPosPrintService {
 
   /// Try to auto-reconnect to a previously authorized printer without showing a dialog.
   /// Uses saved USB vendor/product IDs to find the matching port via getPorts().
+  /// Does NOT save or overwrite saved IDs — those come from explicit user connections only.
   /// Call this on app startup to restore printer connections from a previous session.
   static Future<bool> autoReconnect(String type) async {
     if (!kIsWeb || !isWebSerialAvailable()) return false;
@@ -201,16 +195,7 @@ class EscPosPrintService {
         productId: savedVid != null ? await _getSavedProductId(type) : null,
       );
       final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      if (result['success'] == true) {
-        // Re-save vendor/product ID (in case it changed)
-        final newVid = result['vendorId'] as int?;
-        final newPid = result['productId'] as int?;
-        if (newVid != null) {
-          await _saveVendorId(type, newVid, newPid);
-        }
-        return true;
-      }
-      return false;
+      return result['success'] == true;
     } catch (e) {
       debugPrint('EscPosPrintService.autoReconnect($type) error: $e');
       return false;
