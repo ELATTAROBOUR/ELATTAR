@@ -63,21 +63,15 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
           .length;
 
       // Total items counts
-      _accessoriesCount = accessories.fold(
-        0,
-        (sum, item) => sum + item.quantity,
-      );
+      _accessoriesCount =
+          accessories.fold(0, (sum, item) => sum + item.quantity);
       _devicesCount = devices.fold(0, (sum, item) => sum + item.quantity);
 
       // Debts totals
-      _customerDebts = customerDeferred.fold(
-        0.0,
-        (sum, item) => sum + item.remainingAmount,
-      );
-      _supplierDebts = supplierDebts.fold(
-        0.0,
-        (sum, item) => sum + item.remainingAmount,
-      );
+      _customerDebts =
+          customerDeferred.fold(0.0, (sum, item) => sum + item.remainingAmount);
+      _supplierDebts =
+          supplierDebts.fold(0.0, (sum, item) => sum + item.remainingAmount);
 
       // Recent 5 tickets
       _recentTickets = tickets.take(5).toList();
@@ -86,11 +80,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
       _lowStockItems = [];
       for (var item in accessories) {
         if (item.quantity < 3) {
-          _lowStockItems.add({
-            'name': item.name,
-            'qty': item.quantity,
-            'type': 'إكسسوار',
-          });
+          _lowStockItems.add(
+              {'name': item.name, 'qty': item.quantity, 'type': 'إكسسوار'});
         }
       }
       for (var item in devices) {
@@ -99,7 +90,7 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
             'name':
                 '${item.model} (${item.condition == 'new' ? 'جديد' : 'مستعمل'})',
             'qty': item.quantity,
-            'type': 'جهاز',
+            'type': 'جهاز'
           });
         }
       }
@@ -115,7 +106,9 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
         final d = DateTime(now.year, now.month, now.day - (6 - i));
         return DateFormat('yyyy-MM-dd').format(d);
       });
-      _dailySales = {for (var day in last7Days) day: 0.0};
+      _dailySales = {
+        for (var day in last7Days) day: 0.0,
+      };
       for (var sale in allSales) {
         final saleDate = DateFormat('yyyy-MM-dd').format(sale.saleDate);
         if (_dailySales.containsKey(saleDate)) {
@@ -209,10 +202,9 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                               Text(
                                 'نظرة عامة على حالة المحل والمبيعات والمخزون',
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  color: textMuted,
-                                  fontFamily: 'Cairo',
-                                ),
+                                    fontSize: 14,
+                                    color: textMuted,
+                                    fontFamily: 'Cairo'),
                               ),
                             ],
                           ),
@@ -235,17 +227,12 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
+                            horizontal: 16, vertical: 10),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.refresh_rounded,
-                              color: AppColors.primary,
-                              size: 20,
-                            ),
+                            const Icon(Icons.refresh_rounded,
+                                color: AppColors.primary, size: 20),
                             const SizedBox(width: 8),
                             const Text(
                               'تحديث',
@@ -269,58 +256,43 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
             // ── Alerts Banner ──
             if (_alerts.isNotEmpty)
               _buildAlertsBanner(
-                context,
-                AppColors.primary,
-                textColor,
-                textMuted,
-                isDark,
-              ),
+                  context, AppColors.primary, textColor, textMuted, isDark),
             const SizedBox(height: 24),
 
             // ── Premium Stat Cards ──
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = constraints.maxWidth > 500
-                    ? 4
-                    : (constraints.maxWidth > 300 ? 2 : 1);
-                return GridView.count(
-                  crossAxisCount: crossAxisCount,
-                  shrinkWrap: true,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.5,
-                  children: [
-                    GradientStatCard.info(
-                      title: 'أجهزة قيد الصيانة',
-                      value: _activeRepairs.toString(),
-                    ),
-                    GradientStatCard.warning(
-                      title: 'إجمالي الإكسسوارات',
-                      value: _accessoriesCount.toString(),
-                    ),
-                    GradientStatCard.accent(
-                      title: 'الأجهزة بالمخزن',
-                      value: _devicesCount.toString(),
-                    ),
-                    GradientStatCard.sales(
-                      title: 'ديون العملاء (آجل)',
-                      value: '${_customerDebts.toStringAsFixed(0)} ج.م',
-                    ),
-                  ],
-                );
-              },
+            GridView.count(
+              crossAxisCount: 4,
+              shrinkWrap: true,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.5,
+              children: [
+                GradientStatCard.info(
+                  title: 'أجهزة قيد الصيانة',
+                  value: _activeRepairs.toString(),
+                ),
+                GradientStatCard.warning(
+                  title: 'إجمالي الإكسسوارات',
+                  value: _accessoriesCount.toString(),
+                ),
+                GradientStatCard.accent(
+                  title: 'الأجهزة بالمخزن',
+                  value: _devicesCount.toString(),
+                ),
+                GradientStatCard.sales(
+                  title: 'ديون العملاء (آجل)',
+                  value: '${_customerDebts.toStringAsFixed(0)} ج.م',
+                ),
+              ],
             ),
             const SizedBox(height: 32),
 
             // ── Quick Actions Section ──
             Row(
               children: [
-                const Icon(
-                  Icons.bolt_rounded,
-                  color: AppColors.primary,
-                  size: 22,
-                ),
+                const Icon(Icons.bolt_rounded,
+                    color: AppColors.primary, size: 22),
                 const SizedBox(width: 8),
                 Text(
                   'إجراءات سريعة',
@@ -334,103 +306,75 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
               ],
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = constraints.maxWidth > 500
-                    ? 4
-                    : (constraints.maxWidth > 300 ? 2 : 1);
-                return GridView.count(
-                  crossAxisCount: crossAxisCount,
-                  shrinkWrap: true,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 2.2,
-                  children: [
-                    QuickActionCard(
-                      title: 'عملية بيع جديدة',
-                      subtitle: 'بيع إكسسوار، جهاز، أو قطعة غيار',
-                      icon: Icons.point_of_sale_rounded,
-                      color: AppColors.success,
-                      onTap: () {
-                        if (widget.onNavigate != null) widget.onNavigate!(2);
-                      },
-                    ),
-                    QuickActionCard(
-                      title: 'الصيانة والتذاكر',
-                      subtitle: 'تسجيل واستلام أجهزة صيانة',
-                      icon: Icons.build_circle_rounded,
-                      color: AppColors.info,
-                      onTap: () {
-                        if (widget.onNavigate != null) widget.onNavigate!(3);
-                      },
-                    ),
-                    QuickActionCard(
-                      title: 'جرد ومراقبة المخزن',
-                      subtitle: 'متابعة الكميات وحالة المخزون',
-                      icon: Icons.inventory_rounded,
-                      color: AppColors.warning,
-                      onTap: () {
-                        if (widget.onNavigate != null) widget.onNavigate!(8);
-                      },
-                    ),
-                    QuickActionCard(
-                      title: 'استلام بضائع جديدة',
-                      subtitle: 'إدخال فواتير الموردين للمخزن',
-                      icon: Icons.playlist_add_check_rounded,
-                      color: AppColors.purple,
-                      onTap: () {
-                        if (widget.onNavigate != null) widget.onNavigate!(9);
-                      },
-                    ),
-                  ],
-                );
-              },
+            GridView.count(
+              crossAxisCount: 4,
+              shrinkWrap: true,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 2.2,
+              children: [
+                QuickActionCard(
+                  title: 'عملية بيع جديدة',
+                  subtitle: 'بيع إكسسوار، جهاز، أو قطعة غيار',
+                  icon: Icons.point_of_sale_rounded,
+                  color: AppColors.success,
+                  onTap: () {
+                    if (widget.onNavigate != null) widget.onNavigate!(2);
+                  },
+                ),
+                QuickActionCard(
+                  title: 'الصيانة والتذاكر',
+                  subtitle: 'تسجيل واستلام أجهزة صيانة',
+                  icon: Icons.build_circle_rounded,
+                  color: AppColors.info,
+                  onTap: () {
+                    if (widget.onNavigate != null) widget.onNavigate!(3);
+                  },
+                ),
+                QuickActionCard(
+                  title: 'جرد ومراقبة المخزن',
+                  subtitle: 'متابعة الكميات وحالة المخزون',
+                  icon: Icons.inventory_rounded,
+                  color: AppColors.warning,
+                  onTap: () {
+                    if (widget.onNavigate != null) widget.onNavigate!(8);
+                  },
+                ),
+                QuickActionCard(
+                  title: 'استلام بضائع جديدة',
+                  subtitle: 'إدخال فواتير الموردين للمخزن',
+                  icon: Icons.playlist_add_check_rounded,
+                  color: AppColors.purple,
+                  onTap: () {
+                    if (widget.onNavigate != null) widget.onNavigate!(9);
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 32),
 
             // ── Charts Section ──
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth > 500;
-                if (isWide) {
-                  return SizedBox(
-                    height: 360,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 7,
-                          child: SalesBarChart(dailySales: _dailySales),
-                        ),
-                        const SizedBox(width: 24),
-                        Expanded(
-                          flex: 5,
-                          child: RepairStatusPieChart(
-                            statusCounts: _repairStatusCounts,
-                          ),
-                        ),
-                      ],
+            SizedBox(
+              height: 360,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 7,
+                    child: SalesBarChart(
+                      dailySales: _dailySales,
                     ),
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      SizedBox(
-                        height: 280,
-                        child: SalesBarChart(dailySales: _dailySales),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        height: 280,
-                        child: RepairStatusPieChart(
-                          statusCounts: _repairStatusCounts,
-                        ),
-                      ),
-                    ],
-                  );
-                }
-              },
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    flex: 5,
+                    child: RepairStatusPieChart(
+                      statusCounts: _repairStatusCounts,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 32),
 
@@ -454,16 +398,12 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.1,
-                                    ),
+                                    color: AppColors.primary
+                                        .withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: const Icon(
-                                    Icons.history_rounded,
-                                    color: AppColors.primary,
-                                    size: 20,
-                                  ),
+                                  child: const Icon(Icons.history_rounded,
+                                      color: AppColors.primary, size: 20),
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
@@ -479,9 +419,7 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: AppColors.accent.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
@@ -500,11 +438,10 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                         ),
                         const SizedBox(height: 16),
                         Container(
-                          height: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.06)
-                              : Colors.black.withValues(alpha: 0.06),
-                        ),
+                            height: 1,
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.06)
+                                : Colors.black.withValues(alpha: 0.06)),
                         const SizedBox(height: 8),
                         if (_recentTickets.isEmpty)
                           const Padding(
@@ -512,19 +449,15 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             child: Center(
                               child: Column(
                                 children: [
-                                  Icon(
-                                    Icons.inbox_rounded,
-                                    size: 48,
-                                    color: Colors.grey,
-                                  ),
+                                  Icon(Icons.inbox_rounded,
+                                      size: 48, color: Colors.grey),
                                   SizedBox(height: 12),
                                   Text(
                                     'لا توجد عمليات صيانة حالياً',
                                     style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 15,
-                                      fontFamily: 'Cairo',
-                                    ),
+                                        color: Colors.grey,
+                                        fontSize: 15,
+                                        fontFamily: 'Cairo'),
                                   ),
                                 ],
                               ),
@@ -536,39 +469,36 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: _recentTickets.length,
                             separatorBuilder: (context, index) => Container(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.04)
-                                  : Colors.black.withValues(alpha: 0.04),
-                            ),
+                                height: 1,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.04)
+                                    : Colors.black.withValues(alpha: 0.04)),
                             itemBuilder: (context, index) {
                               final ticket = _recentTickets[index];
                               return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
                                 child: Row(
                                   children: [
                                     Container(
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: AppColors.forStatus(
-                                          ticket.status,
-                                        ).withValues(alpha: 0.15),
+                                        color:
+                                            AppColors.forStatus(ticket.status)
+                                                .withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: Icon(
                                         ticket.status == 'pending'
                                             ? Icons.schedule_rounded
                                             : ticket.status == 'in_progress'
-                                            ? Icons.engineering_rounded
-                                            : ticket.status == 'repaired'
-                                            ? Icons.check_circle_rounded
-                                            : Icons.devices_rounded,
-                                        color: AppColors.forStatus(
-                                          ticket.status,
-                                        ),
+                                                ? Icons.engineering_rounded
+                                                : ticket.status == 'repaired'
+                                                    ? Icons.check_circle_rounded
+                                                    : Icons.devices_rounded,
+                                        color:
+                                            AppColors.forStatus(ticket.status),
                                         size: 20,
                                       ),
                                     ),
@@ -581,20 +511,18 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                           Text(
                                             '${ticket.customerName} - ${ticket.deviceModel}',
                                             style: TextStyle(
-                                              color: textColor,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                              fontFamily: 'Cairo',
-                                            ),
+                                                color: textColor,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                fontFamily: 'Cairo'),
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
                                             '${ticket.problem}',
                                             style: TextStyle(
-                                              color: textMuted,
-                                              fontSize: 12,
-                                              fontFamily: 'Cairo',
-                                            ),
+                                                color: textMuted,
+                                                fontSize: 12,
+                                                fontFamily: 'Cairo'),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -604,27 +532,23 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                     const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
+                                          horizontal: 10, vertical: 5),
                                       decoration: BoxDecoration(
-                                        color: AppColors.forStatus(
-                                          ticket.status,
-                                        ).withValues(alpha: 0.12),
+                                        color:
+                                            AppColors.forStatus(ticket.status)
+                                                .withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
-                                          color: AppColors.forStatus(
-                                            ticket.status,
-                                          ).withValues(alpha: 0.4),
-                                          width: 1,
-                                        ),
+                                            color: AppColors.forStatus(
+                                                    ticket.status)
+                                                .withValues(alpha: 0.4),
+                                            width: 1),
                                       ),
                                       child: Text(
                                         _getStatusArabic(ticket.status),
                                         style: TextStyle(
                                           color: AppColors.forStatus(
-                                            ticket.status,
-                                          ),
+                                              ticket.status),
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
                                           fontFamily: 'Cairo',
@@ -679,11 +603,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 color: AppColors.error.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(
-                                Icons.outbox_rounded,
-                                color: AppColors.error,
-                                size: 28,
-                              ),
+                              child: const Icon(Icons.outbox_rounded,
+                                  color: AppColors.error, size: 28),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -693,24 +614,22 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                   Text(
                                     'مستحقات الموردين',
                                     style: TextStyle(
-                                      fontSize: 13,
-                                      color: textMuted,
-                                      fontFamily: 'Cairo',
-                                    ),
+                                        fontSize: 13,
+                                        color: textMuted,
+                                        fontFamily: 'Cairo'),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     '${_supplierDebts.toStringAsFixed(0)} ج.م',
                                     style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.error,
-                                      fontFamily: 'Cairo',
-                                    ),
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.error,
+                                        fontFamily: 'Cairo'),
                                   ),
                                 ],
                               ),
-                            ),
+                            )
                           ],
                         ),
                       ),
@@ -731,16 +650,14 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: AppColors.warning.withValues(
-                                          alpha: 0.1,
-                                        ),
+                                        color: AppColors.warning
+                                            .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: const Icon(
-                                        Icons.warning_amber_rounded,
-                                        color: AppColors.warning,
-                                        size: 20,
-                                      ),
+                                          Icons.warning_amber_rounded,
+                                          color: AppColors.warning,
+                                          size: 20),
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
@@ -756,13 +673,10 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
+                                      horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: AppColors.warning.withValues(
-                                      alpha: 0.1,
-                                    ),
+                                    color: AppColors.warning
+                                        .withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
@@ -779,11 +693,10 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             ),
                             const SizedBox(height: 16),
                             Container(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.06)
-                                  : Colors.black.withValues(alpha: 0.06),
-                            ),
+                                height: 1,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.black.withValues(alpha: 0.06)),
                             const SizedBox(height: 8),
                             if (_lowStockItems.isEmpty)
                               const Padding(
@@ -792,10 +705,9 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                   child: Text(
                                     'كل المنتجات في حالة ممتازة ✅',
                                     style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 14,
-                                      fontFamily: 'Cairo',
-                                    ),
+                                        color: Colors.grey,
+                                        fontSize: 14,
+                                        fontFamily: 'Cairo'),
                                   ),
                                 ),
                               )
@@ -807,9 +719,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 (index) {
                                   final alert = _lowStockItems[index];
                                   return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 6,
-                                    ),
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 6),
                                     child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
@@ -818,35 +729,29 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                           child: Text(
                                             alert['name'],
                                             style: TextStyle(
-                                              color: textColor,
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
-                                              fontFamily: 'Cairo',
-                                            ),
+                                                color: textColor,
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 13,
+                                                fontFamily: 'Cairo'),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                         Container(
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
-                                          ),
+                                              horizontal: 8, vertical: 3),
                                           decoration: BoxDecoration(
-                                            color: AppColors.error.withValues(
-                                              alpha: 0.12,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
+                                            color: AppColors.error
+                                                .withValues(alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             'متبقي: ${alert['qty']}',
                                             style: const TextStyle(
-                                              color: AppColors.error,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              fontFamily: 'Cairo',
-                                            ),
+                                                color: AppColors.error,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                fontFamily: 'Cairo'),
                                           ),
                                         ),
                                       ],
@@ -874,16 +779,14 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: AppColors.accent.withValues(
-                                          alpha: 0.1,
-                                        ),
+                                        color: AppColors.accent
+                                            .withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                       child: const Icon(
-                                        Icons.history_toggle_off_rounded,
-                                        color: AppColors.accent,
-                                        size: 20,
-                                      ),
+                                          Icons.history_toggle_off_rounded,
+                                          color: AppColors.accent,
+                                          size: 20),
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
@@ -901,24 +804,20 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             ),
                             const SizedBox(height: 16),
                             Container(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.06)
-                                  : Colors.black.withValues(alpha: 0.06),
-                            ),
+                                height: 1,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.black.withValues(alpha: 0.06)),
                             const SizedBox(height: 8),
                             if (_recentLogs.isEmpty)
                               Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 20,
-                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 20),
                                 child: Center(
                                   child: Text(
                                     'لا توجد تعديلات مسجلة بعد 📝',
                                     style: TextStyle(
-                                      color: textMuted,
-                                      fontSize: 15,
-                                    ),
+                                        color: textMuted, fontSize: 15),
                                   ),
                                 ),
                               )
@@ -961,19 +860,15 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
 
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 10.0,
-                                    ),
+                                        vertical: 10.0),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
-                                            Icon(
-                                              iconData,
-                                              color: iconColor,
-                                              size: 20,
-                                            ),
+                                            Icon(iconData,
+                                                color: iconColor, size: 20),
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
@@ -990,9 +885,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                               Text(
                                                 timeStr,
                                                 style: TextStyle(
-                                                  color: textMuted,
-                                                  fontSize: 12,
-                                                ),
+                                                    color: textMuted,
+                                                    fontSize: 12),
                                               ),
                                           ],
                                         ),
@@ -1001,22 +895,18 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                           const SizedBox(height: 4),
                                           Padding(
                                             padding: const EdgeInsets.only(
-                                              right: 28.0,
-                                            ),
+                                                right: 28.0),
                                             child: Text(
                                               log.details!,
                                               style: TextStyle(
-                                                color: textMuted,
-                                                fontSize: 13,
-                                              ),
+                                                  color: textMuted,
+                                                  fontSize: 13),
                                             ),
                                           ),
                                         ],
                                         if (index < _recentLogs.length - 1)
                                           const Divider(
-                                            height: 16,
-                                            thickness: 0.5,
-                                          ),
+                                              height: 16, thickness: 0.5),
                                       ],
                                     ),
                                   );
@@ -1036,13 +926,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
     );
   }
 
-  Widget _buildAlertsBanner(
-    BuildContext context,
-    Color primaryGold,
-    Color textColor,
-    Color textMuted,
-    bool isDark,
-  ) {
+  Widget _buildAlertsBanner(BuildContext context, Color primaryGold,
+      Color textColor, Color textMuted, bool isDark) {
     return GestureDetector(
       onTap: () => setState(() => _alertsExpanded = !_alertsExpanded),
       child: AnimatedContainer(
@@ -1065,11 +950,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.notifications_active_rounded,
-                        color: AppColors.primary,
-                        size: 24,
-                      ),
+                      Icon(Icons.notifications_active_rounded,
+                          color: AppColors.primary, size: 24),
                       const SizedBox(width: 10),
                       Text(
                         '🔔 التنبيهات (${_alerts.length})',
@@ -1101,16 +983,14 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                 ],
               ),
               const SizedBox(height: 12),
-              ..._alerts.take(_alertsExpanded ? _alerts.length : 2).map((
-                alert,
-              ) {
+              ..._alerts
+                  .take(_alertsExpanded ? _alerts.length : 2)
+                  .map((alert) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: alert.color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -1159,9 +1039,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             },
                             style: TextButton.styleFrom(
                               foregroundColor: alert.color,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),

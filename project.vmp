@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Document Version="2">
+    <LicenseManager ProductCode="WSz8ZJEMCXk=" Algorithm="RSA" Bits="2048" PublicExp="AAEAAQ==" PrivateExp="abMizbyWUyOsPBaau9kGfDOHQO8/Kbtu2qTvewNS3yxhoRJ6ddl9okNn2xIc7QEmma/q0A1daU+JhX8rcG6zQYXJM4DGLerDsSxZL10Ls7OMn0AXFJcoKDRd6Fhku3+NpLYiqD0trxuNSQMmpKcQqFETX1YrBa9/25B5oeJushoz3A267ov0E0ZeNTNrAhoDZS4EayeN2WwRIl7rJ/r/oNOTUjPPg6ySvuJCaGtwWPJedcBiZ4yTZtb3YCjqinISevuW5DYWpPEhPUDGO/bbTkykKsTD2XRZBkdUPZcjX+Xluiy/VOqAGyt6tAu7hHbtFmz5W+FzpA16++lO6oZC0Q==" Modulus="5HDkjbAjQIx448J2rwVSRU9rUhQxyIGb5L83R2B1iTIV7ZjVN8kN19L4dOxyq7skddcK+Xvxd+L7nmob47hOeu02v/UkBSQLcnE2XXTmLF2cAD4NervtwnG3gTfcx0VneCWc6Ltl+9K4NnBPwoWQ5V8FtdtqKtcElapWzih1sC+YUUer/iQl6UOyS+SbBzOS6KRJqPqqqL14cJsF1vkz0tyxltbBEAfEryANndnKG21RQG2zgp9nlOiYNSpw9CWb//KCci1Qsos41L951ShWKBD1YHRKPrN18nxTKm3pZNBBa6U3YOvOAFJndIBWOqnYn3E+bUFJeui/uRfhR/ee6Q==" />
+    <Protection InputFileName="dist\ELATTAR-STORE.exe" OutputFileName="dist\ELATTAR-STORE.vmp.exe" Options="396736" VMCodeSectionName=".vmp">
+        <Messages>
+            <Message Id="0" Text="[تنبيه أمني] تم كشف وجود مصحح أخطاء (Debugger) نشط في النظام! لا يمكن تشغيل البرنامج لحماية البيانات والترخيص." />
+            <Message Id="1" Text="[تنبيه أمني] تم كشف تشغيل البرنامج داخل بيئة وهمية (VM / Sandbox)! يرجى تشغيل البرنامج على نظام تشغيل أساسي وحقيقي." />
+            <Message Id="2" Text="ملف الترخيص (license.key) تالف أو غير متوافق مع جهازك الحالي." />
+            <Message Id="3" Text="انتهت صلاحية هذا الترخيص المؤقت. يرجى التواصل مع الموزع لتجديد الاشتراك." />
+        </Messages>
+        <Folders />
+        <Procedures />
+        <Licenses />
+    </Protection>
+</Document>

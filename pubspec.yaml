@@ -1,0 +1,68 @@
+name: mobile_repair_desktop
+description: Mobile Repair Management System
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Core
+  intl: ^0.20.2
+  path_provider: ^2.1.5
+  http: ^1.4.0
+  crypto: ^3.0.3
+  cryptography: ^2.7.0
+  supabase_flutter: ^2.8.0
+
+  # Local Database
+  sqflite_common_ffi: ^2.3.4
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # QR & Barcode
+  qr_flutter: ^4.1.0
+  barcode_widget: ^2.0.4
+
+  # PDF
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  arabic_reshaper: ^0.0.1
+
+
+  # File Picker
+  file_picker: ^10.2.0
+
+
+  # Launch URLs
+  url_launcher: ^6.3.2
+
+  # Charts
+  fl_chart: ^0.70.2
+
+  # ESC/POS
+  esc_pos_utils_plus: ^2.0.4
+  ffi: ^2.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/image/
+    - assets/sync_config.json

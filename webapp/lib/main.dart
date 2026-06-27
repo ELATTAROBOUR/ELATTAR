@@ -12,6 +12,7 @@ import 'theme/app_theme.dart';
 import 'widgets/custom_toast.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'local_print_service.dart';
 import 'models.dart';
 import 'printer_settings_service.dart';
 import 'package:printing/printing.dart';
@@ -6531,6 +6532,7 @@ class _PrinterSettingsDialog extends StatefulWidget {
 class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   List<Printer> _printers = [];
   bool _loading = true;
+  bool _serverAlive = false;
 
   String? _selectedLabel;
   String? _selectedReceipt;
@@ -6538,22 +6540,48 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb) {
-      _loadData();
-    }
+    _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
-    final config = await PrinterSettingsService.load();
-    final printers = await PrinterSettingsService.listAll();
-    if (mounted) {
-      setState(() {
-        _printers = printers;
-        _selectedLabel = config.labelPrinterName;
-        _selectedReceipt = config.receiptPrinterName;
-        _loading = false;
-      });
+
+    if (kIsWeb) {
+      // On web: check local print server status first
+      final status = await LocalPrintService.checkStatus();
+      final alive = status.alive;
+      if (alive) {
+        final printers = await PrinterSettingsService.listAll();
+        final config = await PrinterSettingsService.load();
+        if (mounted) {
+          setState(() {
+            _printers = printers;
+            _serverAlive = true;
+            _selectedLabel = config.labelPrinterName;
+            _selectedReceipt = config.receiptPrinterName;
+            _loading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _serverAlive = false;
+            _printers = [];
+            _loading = false;
+          });
+        }
+      }
+    } else {
+      final config = await PrinterSettingsService.load();
+      final printers = await PrinterSettingsService.listAll();
+      if (mounted) {
+        setState(() {
+          _printers = printers;
+          _selectedLabel = config.labelPrinterName;
+          _selectedReceipt = config.receiptPrinterName;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -6575,128 +6603,273 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     }
   }
 
-  // ─── Web Printer Info Dialog (Printing via browser) ──────────────────
+  // ─── Web Printer Dialog (local print server) ───────────────────────
 
   Widget _buildWebDialog(BuildContext context) {
     return Dialog(
       backgroundColor: AppTheme.cardBg(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
-        width: 440,
+        width: 480,
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.print_rounded,
-                color: Color(0xFFD4AF37),
-                size: 48,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'الطباعة',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFD4AF37),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'سيتم الطباعة عبر نافذة المتصفح',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  color: Color(0xFFD4AF37),
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'عند الطباعة، ستظهر نافذة الطباعة الخاصة بالمتصفح.\nاختر الطابعة المناسبة (XP-370B للملصقات / XP-80C للفواتير)',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 11,
-                  color: Color(0xFF8899AA),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2A3A),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: _loading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(
+                    child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
+                  ),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // ── Header ──────────────────────────────────────────
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Color(0xFFD4AF37),
-                          size: 18,
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _serverAlive
+                                ? const Color(0xFF4CAF50)
+                                : const Color(0xFFEF5350),
+                          ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 10),
+                        const Icon(
+                          Icons.print_rounded,
+                          color: Color(0xFFD4AF37),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            '💡 يمكنك اختيار الطابعة الافتراضية في المتصفح لتجنب اختيارها كل مرة',
-                            style: TextStyle(
+                            _serverAlive
+                                ? 'خادم الطباعة متصل'
+                                : 'خادم الطباعة غير متصل',
+                            style: const TextStyle(
                               fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Color(0xFF8899AA),
-                              height: 1.4,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFD4AF37),
                             ),
                           ),
                         ),
+                        IconButton(
+                          tooltip: 'تحديث',
+                          icon: const Icon(
+                            Icons.refresh,
+                            color: Color(0xFFD4AF37),
+                            size: 22,
+                          ),
+                          onPressed: _loadData,
+                        ),
                       ],
                     ),
-                    SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.print_outlined,
-                          color: Color(0xFFD4AF37),
-                          size: 18,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🖨️ الملصقات (XP-370B): مقاس A6 (62×29mm)\n   الفواتير (XP-80C): مقاس A4 تقريبي (80mm)',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Color(0xFF8899AA),
-                              height: 1.4,
-                            ),
+                    const SizedBox(height: 12),
+
+                    if (!_serverAlive) ...[
+                      // ── Server not running ────────────────────────────
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A2A3A),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFEF5350,
+                            ).withValues(alpha: 0.3),
                           ),
                         ),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Color(0xFFEF5350),
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'خادم الطباعة المحلي غير شغال',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFEF5350),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'للطباعة المباشرة، شغّل ملف print_server.ps1 على جهاز الويندوز:',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                color: Color(0xFF8899AA),
+                                height: 1.5,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.folder_open_rounded,
+                                  color: Color(0xFFD4AF37),
+                                  size: 16,
+                                ),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'webapp/lib/print_server.ps1',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      color: Color(0xFFD4AF37),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.terminal_rounded,
+                                  color: Color(0xFFD4AF37),
+                                  size: 16,
+                                ),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'powershell -ExecutionPolicy Bypass -File print_server.ps1',
+                                    style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 11,
+                                      color: Color(0xFF8899AA),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'يمكنك إضافة الأمر إلى startup لتشغيله تلقائياً مع ويندوز',
+                              style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: Color(0xFF8899AA),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD4AF37),
+                          foregroundColor: const Color(0xFF1A2A3A),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 12,
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text(
+                          'حسناً',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 16),
+                        ),
+                      ),
+                    ] else ...[
+                      // ── Server running → show printer selection ──────
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceTint(context),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.border(context)),
+                        ),
+                        child: Text(
+                          'الطابعات المكتشفة: ${_printers.length}',
+                          style: TextStyle(
+                            color: AppTheme.textDisabled(context),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildPrinterDropdown(
+                        label: '🏷️ طابعة الملصقات',
+                        hint: 'اختر طابعة الملصقات (XP-370B)',
+                        selectedValue: _selectedLabel,
+                        onChanged: (v) => setState(() => _selectedLabel = v),
+                      ),
+                      if (_isMissing(_selectedLabel)) ...[
+                        const SizedBox(height: 6),
+                        _warningChip(_selectedLabel!),
                       ],
-                    ),
+                      const SizedBox(height: 20),
+                      _buildPrinterDropdown(
+                        label: '🧾 طابعة الفواتير',
+                        hint: 'اختر طابعة الفواتير (XP-80C)',
+                        selectedValue: _selectedReceipt,
+                        onChanged: (v) => setState(() => _selectedReceipt = v),
+                      ),
+                      if (_isMissing(_selectedReceipt)) ...[
+                        const SizedBox(height: 6),
+                        _warningChip(_selectedReceipt!),
+                      ],
+                      const SizedBox(height: 28),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text(
+                              'إلغاء',
+                              style: TextStyle(
+                                color: AppTheme.textDisabled(context),
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.save_alt, size: 18),
+                            label: const Text(
+                              'حفظ الإعدادات',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFD4AF37),
+                              foregroundColor: const Color(0xFF1A2A3A),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                            ),
+                            onPressed: _save,
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4AF37),
-                  foregroundColor: const Color(0xFF1A2A3A),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 12,
-                  ),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('حسناً', style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
         ),
       ),
     );
