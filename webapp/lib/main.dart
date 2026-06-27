@@ -6862,21 +6862,12 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
       final success = await EscPosPrintService.connectPrinter(type: type);
       if (mounted) {
         setState(() {}); // Refresh UI
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success ? '✅ تم توصيل الطابعة بنجاح' : '❌ فشل توصيل الطابعة',
-            ),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        debugPrint('Printer connect ($type): $success');
       }
     } catch (e) {
+      debugPrint('Printer connect error ($type): $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
-        );
+        setState(() {});
       }
     }
   }
@@ -6885,13 +6876,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     await EscPosPrintService.disconnectPrinter(type);
     if (mounted) {
       setState(() {}); // Refresh UI
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم قطع اتصال الطابعة'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      debugPrint('Printer disconnected ($type)');
     }
   }
 

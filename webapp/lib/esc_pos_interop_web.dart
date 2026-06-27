@@ -1,13 +1,40 @@
 // lib/esc_pos_interop_web.dart
-// Web implementation using dart:js_interop to access the WebUSB API
-// via the JavaScript bridge (web/js/printer_bridge.js).
+// Web implementation using dart:js_interop to access Web Serial API (primary)
+// and WebUSB API (fallback) via the JavaScript bridge (web/js/printer_bridge.js).
 // Supports multiple printer connections keyed by type ('label', 'receipt').
 
 // ignore_for_file: unused_import
 import 'dart:js_interop';
 import 'dart:typed_data';
 
-// ─── WebUSB JS Function Bindings ────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Web Serial JS Function Bindings (Primary)
+// ═════════════════════════════════════════════════════════════════════════════
+
+@JS('__printerConnect')
+external JSPromise _jsConnect(JSString type, JSNumber? usbVendorId, JSNumber? usbProductId);
+
+@JS('__printerPrint')
+external JSPromise _jsPrint(JSString type, JSArray<JSNumber> data);
+
+@JS('__printerAutoReconnect')
+external JSPromise _jsAutoReconnect(JSString type, JSNumber usbVendorId, JSNumber? usbProductId);
+
+@JS('__printerDisconnect')
+external JSPromise _jsDisconnect(JSString type);
+
+@JS('__printerIsConnected')
+external String _jsIsConnected(JSString type);
+
+@JS('__printerScanAllPorts')
+external JSPromise _jsScanAllPorts();
+
+@JS('navigator.serial')
+external JSObject? get _jsSerial;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WebUSB JS Function Bindings (Fallback)
+// ═════════════════════════════════════════════════════════════════════════════
 
 @JS('__printerUsbConnect')
 external JSPromise _jsUsbConnect(JSString type);
@@ -16,11 +43,7 @@ external JSPromise _jsUsbConnect(JSString type);
 external JSPromise _jsUsbPrint(JSString type, JSArray<JSNumber> data);
 
 @JS('__printerUsbAutoReconnect')
-external JSPromise _jsUsbAutoReconnect(
-  JSString type,
-  JSNumber usbVendorId,
-  JSNumber? usbProductId,
-);
+external JSPromise _jsUsbAutoReconnect(JSString type, JSNumber usbVendorId, JSNumber? usbProductId);
 
 @JS('__printerUsbIsAvailable')
 external String _jsUsbIsAvailable();
@@ -34,12 +57,12 @@ external JSPromise _jsUsbDisconnect(JSString type);
 @JS('__printerUsbIsConnected')
 external String _jsUsbIsConnected(JSString type);
 
+// ═════════════════════════════════════════════════════════════════════════════
+// Shared bindings (used by both)
+// ═════════════════════════════════════════════════════════════════════════════
+
 @JS('__printerSetSavedDeviceIds')
-external void _jsSetSavedDeviceIds(
-  JSString type,
-  JSNumber? usbVendorId,
-  JSNumber? usbProductId,
-);
+external void _jsSetSavedDeviceIds(JSString type, JSNumber? usbVendorId, JSNumber? usbProductId);
 
 @JS('__printerGetSavedDeviceIds')
 external String _jsGetSavedDeviceIds();
@@ -47,20 +70,87 @@ external String _jsGetSavedDeviceIds();
 @JS('navigator.usb')
 external JSObject? get _jsUsb;
 
-// ─── Public API ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Public API - Web Serial
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Check if Web Serial API is available in this browser.
+bool jsCheckWebSerialAvailable() {
+  return _jsSerial != null;
+}
+
+/// Request a serial port from the user (shows browser chooser).
+Future<String> jsPrintConnect(String type, {int? vendorId, int? productId}) async {
+  try {
+    final result = await _jsConnect(type.toJS, vendorId?.toJS, productId?.toJS).toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"success": false, "error": ""}';
+  }
+}
+
+/// Send raw bytes via Web Serial.
+Future<String> jsPrintPrint(String type, Uint8List data) async {
+  try {
+    final jsArray = data.toList().map((e) => e.toJS).toList().toJS;
+    final result = await _jsPrint(type.toJS, jsArray).toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"success": false, "error": ""}';
+  }
+}
+
+/// Auto-reconnect to a previously authorized serial port (no dialog).
+Future<String> jsPrintAutoReconnect(String type, {required int vendorId, int? productId}) async {
+  try {
+    final result = await _jsAutoReconnect(type.toJS, vendorId.toJS, productId?.toJS).toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"success": false, "error": ""}';
+  }
+}
+
+/// Disconnect a serial printer.
+Future<String> jsPrintDisconnect(String type) async {
+  try {
+    final result = await _jsDisconnect(type.toJS).toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"success": false, "error": ""}';
+  }
+}
+
+/// Check if a serial printer is connected (sync).
+String jsPrintIsConnected(String type) {
+  return _jsIsConnected(type.toJS);
+}
+
+/// Scan all previously authorized serial ports (no dialog).
+Future<String> jsPrintScanAllPorts() async {
+  try {
+    final result = await _jsScanAllPorts().toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"ports": [], "error": ""}';
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Public API - WebUSB
+// ═════════════════════════════════════════════════════════════════════════════
 
 /// Check if WebUSB API is available in this browser.
 bool jsCheckWebUsbAvailable() {
   return _jsUsb != null;
 }
 
-/// Request a USB printer via WebUSB API (shows browser chooser filtered by printer class).
+/// Request a USB printer via WebUSB API (shows browser chooser).
 Future<String> jsPrintUsbConnect(String type) async {
   try {
     final result = await _jsUsbConnect(type.toJS).toDart;
     return result.toString();
   } catch (e) {
-    return '{"success": false, "error": "$e"}';
+    return '{"success": false, "error": ""}';
   }
 }
 
@@ -71,25 +161,17 @@ Future<String> jsPrintUsbPrint(String type, Uint8List data) async {
     final result = await _jsUsbPrint(type.toJS, jsArray).toDart;
     return result.toString();
   } catch (e) {
-    return '{"success": false, "error": "$e"}';
+    return '{"success": false, "error": ""}';
   }
 }
 
 /// Auto-reconnect to a previously authorized WebUSB device.
-Future<String> jsPrintUsbAutoReconnect(
-  String type, {
-  required int vendorId,
-  int? productId,
-}) async {
+Future<String> jsPrintUsbAutoReconnect(String type, {required int vendorId, int? productId}) async {
   try {
-    final result = await _jsUsbAutoReconnect(
-      type.toJS,
-      vendorId.toJS,
-      productId?.toJS,
-    ).toDart;
+    final result = await _jsUsbAutoReconnect(type.toJS, vendorId.toJS, productId?.toJS).toDart;
     return result.toString();
   } catch (e) {
-    return '{"success": false, "error": "$e"}';
+    return '{"success": false, "error": ""}';
   }
 }
 
@@ -104,7 +186,7 @@ Future<String> jsPrintUsbGetAuthorized() async {
     final result = await _jsUsbGetAuthorized().toDart;
     return result.toString();
   } catch (e) {
-    return '{"devices": [], "error": "$e"}';
+    return '{"devices": [], "error": ""}';
   }
 }
 
@@ -114,7 +196,7 @@ Future<String> jsPrintUsbDisconnect(String type) async {
     final result = await _jsUsbDisconnect(type.toJS).toDart;
     return result.toString();
   } catch (e) {
-    return '{"success": false, "error": "$e"}';
+    return '{"success": false, "error": ""}';
   }
 }
 
@@ -122,6 +204,10 @@ Future<String> jsPrintUsbDisconnect(String type) async {
 String jsPrintUsbIsConnected(String type) {
   return _jsUsbIsConnected(type.toJS);
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Public API - Shared
+// ═════════════════════════════════════════════════════════════════════════════
 
 /// Set saved USB vendor/product IDs in the JS bridge for auto-detection.
 void jsPrintSetSavedDeviceIds(String type, int? vendorId, int? productId) {
