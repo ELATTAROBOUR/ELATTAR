@@ -272,6 +272,152 @@ class EscPosPrintService {
     }
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // WebUSB API (Alternative for printers not visible via Web Serial)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /// Check if WebUSB API is available in this browser
+  static bool isWebUsbAvailable() {
+    if (!kIsWeb) return false;
+    return jsCheckWebUsbAvailable();
+  }
+
+  /// Connect to a USB printer via WebUSB API.
+  /// Shows a browser chooser filtered by USB printer class.
+  /// This is an alternative to connectPrinter() for printers that
+  /// don't appear in the Web Serial API chooser.
+  static Future<bool> connectUsbPrinter({required String type}) async {
+    if (!kIsWeb || !isWebUsbAvailable()) return false;
+
+    try {
+      final jsonStr = await jsPrintUsbConnect(type);
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      if (result['success'] == true) {
+        final newVid = result['vendorId'] as int?;
+        final newPid = result['productId'] as int?;
+        final productName = result['productName'] as String?;
+        debugPrint(
+          'WebUSB printer connected ($type): vendor=$newVid, product=$newPid, name=$productName',
+        );
+        // Save IDs for auto-reconnect
+        if (newVid != null) {
+          await _saveVendorId(type, newVid, newPid);
+          // Also save with 'usb_' prefix to distinguish WebUSB from Serial
+          await DatabaseHelper.saveSetting('usb_method_$type', 'webusb');
+        }
+        return true;
+      }
+
+      if (result['cancelled'] == true) {
+        debugPrint('User cancelled WebUSB printer selection ($type)');
+      } else {
+        debugPrint(
+          'WebUSB printer connection failed ($type): ${result['error']}',
+        );
+      }
+      return false;
+    } catch (e) {
+      debugPrint('EscPosPrintService.connectUsbPrinter($type) error: $e');
+      return false;
+    }
+  }
+
+  /// Disconnect a WebUSB printer
+  static Future<void> disconnectUsbPrinter(String type) async {
+    if (!kIsWeb) return;
+    try {
+      await jsPrintUsbDisconnect(type);
+    } catch (e) {
+      debugPrint('EscPosPrintService.disconnectUsbPrinter($type) error: $e');
+    }
+  }
+
+  /// Try to auto-reconnect to a previously authorized WebUSB printer.
+  static Future<bool> autoReconnectUsb(String type) async {
+    if (!kIsWeb || !isWebUsbAvailable()) return false;
+    try {
+      final savedVid = await _getSavedVendorId(type);
+      if (savedVid == null) return false;
+      final jsonStr = await jsPrintUsbAutoReconnect(
+        type,
+        vendorId: savedVid,
+        productId: await _getSavedProductId(type),
+      );
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      return result['success'] == true;
+    } catch (e) {
+      debugPrint('EscPosPrintService.autoReconnectUsb($type) error: $e');
+      return false;
+    }
+  }
+
+  /// Check if a specific printer type is connected via WebUSB
+  static bool isUsbConnected(String type) {
+    if (!kIsWeb) return false;
+    try {
+      final jsonStr = jsPrintUsbIsConnected(type);
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      return result['connected'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check if a printer type is connected via EITHER Web Serial or WebUSB
+  static bool isAnyConnected(String type) {
+    return isConnected(type) || isUsbConnected(type);
+  }
+
+  /// Print via whichever method is connected (Web Serial or WebUSB)
+  static Future<bool> printViaAny(String type, Uint8List data) async {
+    if (!kIsWeb) return false;
+
+    // Try Web Serial first
+    if (isConnected(type)) {
+      try {
+        final jsonStr = await jsPrintPrint(type, data);
+        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+        if (result['success'] == true) return true;
+      } catch (_) {}
+    }
+
+    // Try WebUSB next
+    if (isUsbConnected(type)) {
+      try {
+        final jsonStr = await jsPrintUsbPrint(type, data);
+        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+        if (result['success'] == true) return true;
+      } catch (_) {}
+    }
+
+    return false;
+  }
+
+  /// Get saved connection method for a printer type
+  static Future<String?> _getSavedMethod(String type) async {
+    try {
+      return await DatabaseHelper.getSetting('usb_method_$type');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Auto-reconnect ALL printers using BOTH methods (Serial first, then WebUSB).
+  /// Called on app startup.
+  static Future<void> autoReconnectAll() async {
+    if (!kIsWeb) return;
+    // First sync saved IDs to JS bridge
+    await setSavedDevicesInJs();
+
+    for (final type in [labelPrinterType, receiptPrinterType]) {
+      // Try Web Serial auto-reconnect
+      await autoReconnect(type);
+      // Try WebUSB auto-reconnect
+      await autoReconnectUsb(type);
+    }
+  }
+
   /// Check if a specific printer type is currently connected
   static bool isConnected(String type) {
     if (!kIsWeb) return false;
@@ -314,20 +460,11 @@ class EscPosPrintService {
 
   /// Print a label to the connected label USB printer.
   static Future<bool> printLabel(Ticket ticket) async {
-    if (!kIsWeb || !isConnected(labelPrinterType)) return false;
+    if (!kIsWeb || !isAnyConnected(labelPrinterType)) return false;
 
     try {
       final data = _buildLabelEscPos(ticket);
-      final jsonStr = await jsPrintPrint(labelPrinterType, data);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-
-      if (result['success'] == true) {
-        debugPrint('ESC/POS label printed successfully');
-        return true;
-      } else {
-        debugPrint('ESC/POS label print failed: ${result['error']}');
-        return false;
-      }
+      return await printViaAny(labelPrinterType, data);
     } catch (e) {
       debugPrint('EscPosPrintService.printLabel error: $e');
       return false;
@@ -336,7 +473,7 @@ class EscPosPrintService {
 
   /// Print a receipt to the connected receipt USB printer.
   static Future<bool> printReceipt(Ticket ticket, {int copies = 1}) async {
-    if (!kIsWeb || !isConnected(receiptPrinterType)) return false;
+    if (!kIsWeb || !isAnyConnected(receiptPrinterType)) return false;
 
     try {
       for (int i = 0; i < copies; i++) {
@@ -345,13 +482,9 @@ class EscPosPrintService {
           copyIndex: i + 1,
           totalCopies: copies,
         );
-        final jsonStr = await jsPrintPrint(receiptPrinterType, data);
-        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-
-        if (result['success'] != true) {
-          debugPrint(
-            'ESC/POS receipt copy ${i + 1} failed: ${result['error']}',
-          );
+        final ok = await printViaAny(receiptPrinterType, data);
+        if (!ok) {
+          debugPrint('ESC/POS receipt copy ${i + 1} failed');
           return false;
         }
       }

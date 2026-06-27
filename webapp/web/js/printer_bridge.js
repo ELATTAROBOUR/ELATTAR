@@ -282,3 +282,299 @@ async function __printerAutoReconnect(type, usbVendorId, usbProductId) {
     return JSON.stringify({ success: false, error: e.message || String(e) });
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WebUSB API (Alternative connection method for printers not visible via Web Serial)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Also listen for WebUSB device connect/disconnect events
+(function _initWebUsb() {
+  if (navigator.usb) {
+    navigator.usb.addEventListener('connect', async (event) => {
+      const device = event.target;
+      console.log('[PrinterBridge] WebUSB device connected:', device.vendorId, device.productId, device.productName);
+      await _tryAutoReconnectAllUsb();
+    });
+
+    navigator.usb.addEventListener('disconnect', (event) => {
+      const device = event.target;
+      console.log('[PrinterBridge] WebUSB device disconnected:', device.productName);
+      for (const type of Object.keys(window.__printerConnections)) {
+        const conn = window.__printerConnections[type];
+        if (conn && conn.device === device) {
+          console.log('[PrinterBridge] Cleaned up WebUSB connection for type:', type);
+          delete window.__printerConnections[type];
+        }
+      }
+    });
+  }
+})();
+
+/**
+ * Try to auto-reconnect all printer types via WebUSB (using saved IDs).
+ */
+async function _tryAutoReconnectAllUsb() {
+  const saved = window.__printerSavedDevices || {};
+  for (const type of Object.keys(saved)) {
+    if (window.__printerConnections[type] && window.__printerConnections[type].device) {
+      continue;
+    }
+    const { vendorId, productId } = saved[type];
+    if (vendorId != null) {
+      await __printerUsbAutoReconnect(type, vendorId, productId);
+    }
+  }
+}
+
+/**
+ * Request a USB printer via WebUSB API (fallback if Web Serial doesn't find it).
+ * Shows a browser chooser filtered by USB printer class (0x07) and vendor-specific (0xFF).
+ * @param {string} type - Printer type key ('label' or 'receipt')
+ * @returns {string} JSON: { success, vendorId?, productId?, productName?, error? }
+ */
+async function __printerUsbConnect(type) {
+  try {
+    if (!navigator.usb) {
+      return JSON.stringify({ success: false, error: 'WebUSB API غير متاح في هذا المتصفح' });
+    }
+
+    // Request a USB device - try printer class first, then vendor-specific
+    const device = await navigator.usb.requestDevice({
+      filters: [
+        { classCode: 7 },   // USB Printer Class
+        { classCode: 255 }, // Vendor-specific (many POS thermal printers)
+      ],
+    });
+
+    if (!device) {
+      return JSON.stringify({ success: false, cancelled: true });
+    }
+
+    await device.open();
+    if (device.configuration === null) {
+      await device.selectConfiguration(1);
+    }
+    await device.claimInterface(0);
+
+    // Find the OUT endpoint for sending data
+    const outEndpoint = _findUsbOutEndpoint(device);
+
+    // Store connection
+    window.__printerConnections[type] = {
+      device,
+      usbProtocol: true,
+      outEndpoint: outEndpoint,
+    };
+
+    // Save in JS for onconnect auto-detection
+    __printerSetSavedDeviceIds(type, device.vendorId, device.productId);
+
+    return JSON.stringify({
+      success: true,
+      vendorId: device.vendorId,
+      productId: device.productId,
+      productName: device.productName || null,
+    });
+  } catch (e) {
+    if (e.name === 'NotFoundError') {
+      return JSON.stringify({ success: false, cancelled: true });
+    }
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+}
+
+/**
+ * Send raw bytes to a WebUSB-connected printer.
+ * @param {string} type - Printer type key
+ * @param {Uint8Array} data - Raw bytes to send
+ * @returns {string} JSON: { success, error? }
+ */
+async function __printerUsbPrint(type, data) {
+  try {
+    const conn = window.__printerConnections[type];
+    if (!conn || !conn.device) {
+      return JSON.stringify({ success: false, error: 'الطابعة غير متصلة عبر WebUSB' });
+    }
+
+    const uint8Data = (data instanceof Uint8Array) ? data : new Uint8Array(data);
+
+    if (conn.outEndpoint) {
+      await conn.device.transferOut(conn.outEndpoint.endpointNumber, uint8Data);
+    } else {
+      // Fallback: try endpoint 2 (common for printer class devices)
+      await conn.device.transferOut(2, uint8Data);
+    }
+
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+}
+
+/**
+ * Auto-reconnect to a previously authorized WebUSB device
+ * (without showing a browser dialog).
+ * @param {string} type - Printer type key
+ * @param {number} usbVendorId - USB vendor ID to match
+ * @param {number|null} usbProductId - USB product ID to match
+ * @returns {string} JSON: { success, error? }
+ */
+async function __printerUsbAutoReconnect(type, usbVendorId, usbProductId) {
+  try {
+    if (!navigator.usb) {
+      return JSON.stringify({ success: false, error: 'WebUSB not available' });
+    }
+
+    // Check if already connected for this type
+    if (window.__printerConnections[type] && window.__printerConnections[type].device) {
+      return JSON.stringify({ success: true });
+    }
+
+    const devices = await navigator.usb.getDevices();
+    for (const device of devices) {
+      if (device.vendorId === usbVendorId &&
+          (usbProductId == null || device.productId === usbProductId)) {
+
+        try {
+          await device.open();
+          if (device.configuration === null) {
+            await device.selectConfiguration(1);
+          }
+          await device.claimInterface(0);
+
+          const outEndpoint = _findUsbOutEndpoint(device);
+          window.__printerConnections[type] = {
+            device,
+            usbProtocol: true,
+            outEndpoint: outEndpoint,
+          };
+
+          return JSON.stringify({ success: true });
+        } catch (_) {
+          // Device might be busy - try next
+          continue;
+        }
+      }
+    }
+
+    return JSON.stringify({ success: false, error: 'لم يتم العثور على طابعة WebUSB موافقة' });
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+}
+
+/**
+ * Check if WebUSB API is available in this browser.
+ * @returns {string} JSON: { available }
+ */
+function __printerUsbIsAvailable() {
+  return JSON.stringify({ available: navigator.usb != null });
+}
+
+/**
+ * Get all previously authorized WebUSB devices (no dialog).
+ * @returns {string} JSON: { devices: [{vendorId, productId, productName}] }
+ */
+async function __printerUsbGetAuthorized() {
+  try {
+    if (!navigator.usb) {
+      return JSON.stringify({ devices: [] });
+    }
+    const devices = await navigator.usb.getDevices();
+    return JSON.stringify({
+      devices: devices.map(d => ({
+        vendorId: d.vendorId,
+        productId: d.productId,
+        productName: d.productName || null,
+      })),
+    });
+  } catch (e) {
+    return JSON.stringify({ devices: [], error: e.message || String(e) });
+  }
+}
+
+/**
+ * Find the first bulk OUT endpoint on a USB device.
+ * @param {USBDevice} device
+ * @returns {USBEndpoint|null}
+ */
+function _findUsbOutEndpoint(device) {
+  try {
+    if (!device.configuration) return null;
+    for (const iface of device.configuration.interfaces) {
+      for (const alt of iface.alternates) {
+        for (const ep of alt.endpoints) {
+          if (ep.direction === 'out' && (ep.type === 'bulk' || ep.type === 'interrupt')) {
+            return ep;
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * Disconnect a previously connected WebUSB printer.
+ * @param {string} type - Printer type key
+ * @returns {string} JSON: { success }
+ */
+async function __printerUsbDisconnect(type) {
+  try {
+    const conn = window.__printerConnections[type];
+    if (conn && conn.device) {
+      try {
+        await conn.device.close();
+      } catch (_) {}
+      delete window.__printerConnections[type];
+    }
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+}
+
+/**
+ * Check if a specific WebUSB printer is connected.
+ * @param {string} type - Printer type key
+ * @returns {string} JSON: { connected, vendorId?, productId?, productName? }
+ */
+function __printerUsbIsConnected(type) {
+  const conn = window.__printerConnections[type];
+  if (conn && conn.device) {
+    return JSON.stringify({
+      connected: true,
+      vendorId: conn.device.vendorId,
+      productId: conn.device.productId,
+      productName: conn.device.productName || null,
+    });
+  }
+  return JSON.stringify({ connected: false });
+}
+
+// ─── Universal Auto-Reconnect (tries both Serial and WebUSB) ────────────
+
+/**
+ * Try to auto-reconnect ALL printer types using BOTH methods (Serial first, then WebUSB).
+ * This is called on startup and when any device connect event fires.
+ */
+async function _tryAutoReconnectAll() {
+  const saved = window.__printerSavedDevices || {};
+  for (const type of Object.keys(saved)) {
+    // Already connected via either method?
+    if (window.__printerConnections[type] &&
+        (window.__printerConnections[type].port || window.__printerConnections[type].device)) {
+      continue;
+    }
+    const { vendorId, productId } = saved[type];
+    if (vendorId == null) continue;
+
+    // Try Web Serial first
+    await __printerAutoReconnect(type, vendorId, productId);
+
+    // If still not connected, try WebUSB
+    if (!window.__printerConnections[type] || !window.__printerConnections[type].port) {
+      await __printerUsbAutoReconnect(type, vendorId, productId);
+    }
+  }
+}
