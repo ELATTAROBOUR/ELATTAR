@@ -2968,17 +2968,8 @@ class _MainScreenState extends State<MainScreen> {
       (_) => _updateBadgeCounts(),
     );
 
-    // Sync saved printer IDs to JS bridge, then auto-reconnect on startup
-    _initPrinters();
-  }
-
-  Future<void> _initPrinters() async {
-    if (!kIsWeb) return;
-    // 1. Sync saved printer IDs from DatabaseHelper to the JS bridge.
-    //    This ensures the onconnect handler in JS can auto-detect devices.
-    await EscPosPrintService.setSavedDevicesInJs();
-    // 2. Try to auto-reconnect all printers.
-    await EscPosPrintService.autoReconnectAll();
+    // Printers: local HTTP server handles auto-connect on startup.
+    // No browser API initialization needed.
   }
 
   Timer? _syncTimer;
@@ -6549,6 +6540,11 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     super.initState();
     if (!kIsWeb) {
       _loadData();
+    } else {
+      // Refresh cached printer status from the local HTTP server
+      EscPosPrintService.refreshStatus().then((_) {
+        if (mounted) setState(() {});
+      });
     }
   }
 
@@ -6584,9 +6580,18 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     }
   }
 
-  // ─── Web USB Printer Connection Dialog ──────────────────────────────────
+  // ─── Web Printer Status Dialog (local HTTP server) ─────────────────────
 
   Widget _buildWebDialog(BuildContext context) {
+    final serverStatus = EscPosPrintService.getServerStatus();
+    final serverReachable = serverStatus['status'] != 'unreachable';
+    final labelConnected = EscPosPrintService.isConnected(
+      EscPosPrintService.labelPrinterType,
+    );
+    final receiptConnected = EscPosPrintService.isConnected(
+      EscPosPrintService.receiptPrinterType,
+    );
+
     return Dialog(
       backgroundColor: AppTheme.cardBg(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -6597,9 +6602,9 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.usb_outlined,
-                color: Color(0xFFD4AF37),
+              Icon(
+                serverReachable ? Icons.print_rounded : Icons.usb_off_rounded,
+                color: const Color(0xFFD4AF37),
                 size: 48,
               ),
               const SizedBox(height: 16),
@@ -6613,145 +6618,100 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'قم بتوصيل الطابعات عبر USB',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  color: Color(0xFFD4AF37),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: serverReachable
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFEF5350),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    serverReachable
+                        ? '🖥️ خادم الطباعة متصل'
+                        : '⚠️ خادم الطباعة غير متصل',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      color: Color(0xFFD4AF37),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'تأكد من توصيل الطابعة بالجهاز، ثم اضغط "توصيل" لاختيارها من القائمة',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 11,
-                  color: Color(0xFF8899AA),
+              if (!serverReachable) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'قم بتشغيل print_server.ps1 على جهاز الويندوز',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: Color(0xFF8899AA),
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 20),
 
               // ── Label Printer ──────────────────────────────────────────
-              _buildPrinterRow(
-                context,
-                title: 'طابعة الملصقات (XP-370B)',
+              _buildWebPrinterRow(
+                title: 'XP-370B (الملصقات)',
                 icon: Icons.label_outline,
-                connected: EscPosPrintService.isConnected(
-                  EscPosPrintService.labelPrinterType,
-                ),
-                onConnect: () =>
-                    _connectUsbPrinter(EscPosPrintService.labelPrinterType),
-                onDisconnect: () =>
-                    _disconnectUsbPrinter(EscPosPrintService.labelPrinterType),
+                connected: labelConnected,
               ),
               const SizedBox(height: 12),
 
               // ── Receipt Printer ────────────────────────────────────────
-              _buildPrinterRow(
-                context,
-                title: 'طابعة الفواتير (XP-80C)',
+              _buildWebPrinterRow(
+                title: 'XP-80C (الفواتير)',
                 icon: Icons.receipt_long_outlined,
-                connected: EscPosPrintService.isConnected(
-                  EscPosPrintService.receiptPrinterType,
-                ),
-                onConnect: () =>
-                    _connectUsbPrinter(EscPosPrintService.receiptPrinterType),
-                onDisconnect: () => _disconnectUsbPrinter(
-                  EscPosPrintService.receiptPrinterType,
-                ),
+                connected: receiptConnected,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-              // ── Info text ──────────────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2A3A),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Color(0xFFD4AF37),
-                          size: 18,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '💡 بعد توصيل الطابعة أول مرة، سيتم إعادة الاتصال تلقائياً في الزيارات القادمة',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Color(0xFF8899AA),
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
+              // ── Refresh & Close buttons ────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFD4AF37),
+                      side: const BorderSide(color: Color(0xFFD4AF37)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                     ),
-                    SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.usb, color: Color(0xFFD4AF37), size: 18),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🔌 إذا لم تظهر الطابعة في القائمة، تأكد من توصيلها بالجهاز ثم اضغط "توصيل" مرة أخرى',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Color(0xFF8899AA),
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
+                    onPressed: () async {
+                      await EscPosPrintService.refreshStatus();
+                      if (mounted) setState(() {});
+                    },
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text(
+                      'تحديث الحالة',
+                      style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
                     ),
-                    SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.refresh, color: Color(0xFFD4AF37), size: 18),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🔄 عند توصيل طابعة سبق توصيلها، سيتم اكتشافها تلقائياً دون الحاجة لإعادة اختيارها',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11,
-                              color: Color(0xFF8899AA),
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Close button ───────────────────────────────────────────
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4AF37),
-                  foregroundColor: const Color(0xFF1A2A3A),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 12,
                   ),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('حسناً', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4AF37),
+                      foregroundColor: const Color(0xFF1A2A3A),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 10,
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('إغلاق', style: TextStyle(fontSize: 14)),
+                  ),
+                ],
               ),
             ],
           ),
@@ -6760,13 +6720,10 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     );
   }
 
-  Widget _buildPrinterRow(
-    BuildContext context, {
+  Widget _buildWebPrinterRow({
     required String title,
     required IconData icon,
     required bool connected,
-    required VoidCallback onConnect,
-    required VoidCallback onDisconnect,
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -6825,59 +6782,9 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          if (connected)
-            SizedBox(
-              height: 32,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFEF5350),
-                  side: const BorderSide(color: Color(0xFFEF5350)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                onPressed: onDisconnect,
-                child: const Text('قطع', style: TextStyle(fontSize: 12)),
-              ),
-            )
-          else
-            SizedBox(
-              height: 32,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD4AF37),
-                  foregroundColor: const Color(0xFF1A2A3A),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                onPressed: onConnect,
-                child: const Text('توصيل', style: TextStyle(fontSize: 12)),
-              ),
-            ),
         ],
       ),
     );
-  }
-
-  Future<void> _connectUsbPrinter(String type) async {
-    try {
-      final success = await EscPosPrintService.connectPrinter(type: type);
-      if (mounted) {
-        setState(() {}); // Refresh UI
-        debugPrint('Printer connect ($type): $success');
-      }
-    } catch (e) {
-      debugPrint('Printer connect error ($type): $e');
-      if (mounted) {
-        setState(() {});
-      }
-    }
-  }
-
-  Future<void> _disconnectUsbPrinter(String type) async {
-    await EscPosPrintService.disconnectPrinter(type);
-    if (mounted) {
-      setState(() {}); // Refresh UI
-      debugPrint('Printer disconnected ($type)');
-    }
   }
 
   bool _isMissing(String? name) {

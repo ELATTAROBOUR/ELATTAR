@@ -1,7 +1,7 @@
 // lib/esc_pos_print_service.dart
 // ─────────────────────────────────────────────────────────────────────────────
-// ESC/POS Direct USB Printing Service for Web
-// Uses Web Serial API (primary) + WebUSB API (fallback) via JavaScript bridge.
+// ESC/POS Print Service - communicates with local print_server.ps1 via HTTP.
+// Clean, simple, no browser API dependencies.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:convert';
@@ -9,13 +9,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 import 'models.dart';
-import 'printer_settings_service.dart';
-import 'database_helper.dart';
 
-// Conditional import: use JS interop on web, stub on native
-import 'esc_pos_interop_stub.dart'
-    if (dart.library.js_interop) 'esc_pos_interop_web.dart';
+/// Cached server status so UI can check isConnected synchronously.
+Map<String, dynamic> _cachedStatus = {};
+DateTime _lastStatusFetch = DateTime(2000);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ESC/POS Command Builder
@@ -24,608 +23,298 @@ import 'esc_pos_interop_stub.dart'
 class EscPosBuilder {
   final List<int> _bytes = [];
 
-  /// Initialize printer
   void init() {
-    _bytes.addAll([0x1B, 0x40]); // ESC @
+    _bytes.addAll([0x1B, 0x40]);
   }
 
-  /// Set alignment: 0=left, 1=center, 2=right
   void align(int n) {
     _bytes.addAll([0x1B, 0x61, n.clamp(0, 2)]);
   }
 
-  /// Set character size: width×height (1-8)
-  void charSize(int width, int height) {
-    final n = ((width.clamp(1, 8) - 1) << 4) | (height.clamp(1, 8) - 1);
-    _bytes.addAll([0x1D, 0x21, n]);
+  void charSize(int w, int h) {
+    _bytes.addAll([
+      0x1D,
+      0x21,
+      ((w.clamp(1, 8) - 1) << 4) | (h.clamp(1, 8) - 1),
+    ]);
   }
 
-  /// Set bold mode on/off
   void bold(bool on) {
     _bytes.addAll([0x1B, 0x45, on ? 1 : 0]);
   }
 
-  /// Print text (encoded as UTF-8)
   void text(String txt) {
     _bytes.addAll(utf8.encode(txt));
   }
 
-  /// Print text with line feed
   void textLn(String txt) {
     text(txt);
-    _bytes.add(0x0A); // LF
+    _bytes.add(0x0A);
   }
 
-  /// Line feed (n lines)
   void feed(int n) {
     _bytes.addAll([0x1B, 0x64, n]);
   }
 
-  /// Print barcode (CODE128)
   void barcode128(String data, {int height = 100, int width = 2}) {
     final bytes = utf8.encode(data);
     _bytes.addAll([
-      0x1D, 0x68, height, // Barcode height
-      0x1D, 0x77, width.clamp(2, 6), // Barcode width
-      0x1D, 0x6B, 0x49, // CODE128
+      0x1D,
+      0x68,
+      height,
+      0x1D,
+      0x77,
+      width.clamp(2, 6),
+      0x1D,
+      0x6B,
+      0x49,
     ]);
     _bytes.addAll(bytes);
-    _bytes.addAll([0x00, 0x0A]); // NUL terminator + LF
+    _bytes.addAll([0x00, 0x0A]);
   }
 
-  /// Print QR code
   void qrCode(String data, {int size = 4}) {
     final bytes = utf8.encode(data);
-    final len = bytes.length;
-
-    // Set QR code model (model 2)
     _bytes.addAll([0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);
-
-    // Set QR code size
-    _bytes.addAll([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, size.clamp(1, 16)]);
-
-    // Store QR code data
-    final pl = len + 3;
+    _bytes.addAll([
+      0x1D,
+      0x28,
+      0x6B,
+      0x03,
+      0x00,
+      0x31,
+      0x43,
+      size.clamp(1, 16),
+    ]);
+    final pl = bytes.length + 3;
     _bytes.addAll([0x1D, 0x28, 0x6B, pl % 256, pl >> 8, 0x31, 0x50, 0x30]);
     _bytes.addAll(bytes);
-
-    // Print QR code
     _bytes.addAll([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]);
-    _bytes.add(0x0A); // LF
+    _bytes.add(0x0A);
   }
 
-  /// Full cut
   void cut() {
-    _bytes.addAll([0x1D, 0x56, 0x00]); // GS V 0
+    _bytes.addAll([0x1D, 0x56, 0x00]);
   }
 
-  /// Draw horizontal line
-  void hr({String char = '-', int width = 48}) {
+  void hr({String char = "-", int width = 48}) {
     textLn(char * width);
   }
 
-  /// Get the final byte array
   Uint8List build() => Uint8List.fromList(_bytes);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ESC/POS Print Service
+// ESC/POS Print Service - communicates with local print_server.ps1 via HTTP.
+// The server manages USB/serial connections to the thermal printers.
 // ═════════════════════════════════════════════════════════════════════════════
 
 class EscPosPrintService {
-  static const String labelPrinterType = 'label';
-  static const String receiptPrinterType = 'receipt';
+  static const String labelPrinterType = "label";
+  static const String receiptPrinterType = "receipt";
+  static const int serverPort = 19283;
+  static String get baseUrl => "http://localhost:$serverPort";
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // Web Serial API (Primary)
-  // ═════════════════════════════════════════════════════════════════════════
-
-  /// Check if Web Serial API is available in this browser.
-  static bool isWebSerialAvailable() {
-    if (!kIsWeb) return false;
-    return jsCheckWebSerialAvailable();
-  }
-
-  /// Connect to a printer via Web Serial API.
-  static Future<bool> connectPrinterSerial(String type) async {
-    if (!kIsWeb) return false;
+  /// Check if the local print server is running.
+  static Future<bool> isServerAvailable() async {
     try {
-      final vid = await _getSavedVendorId(type);
-      final pid = await _getSavedProductId(type);
-      final jsonStr = await jsPrintConnect(type, vendorId: vid, productId: pid);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      if (result['success'] == true) {
-        final newVid = result['vendorId'] as int?;
-        final newPid = result['productId'] as int?;
-        debugPrint('Serial printer connected ($type): vendor=$newVid, product=$newPid');
-        if (newVid != null) await _saveVendorId(type, newVid, newPid);
-        return true;
-      }
-      if (result['cancelled'] == true) {
-        debugPrint('User cancelled serial port selection ($type)');
-      } else {
-        debugPrint('Serial connection failed ($type): ${result['error']}');
-      }
-      return false;
-    } catch (e) {
-      debugPrint('EscPosPrintService.connectPrinterSerial($type) error: $e');
-      return false;
-    }
-  }
-
-  /// Check if a specific printer type is connected via Web Serial.
-  static bool isSerialConnected(String type) {
-    if (!kIsWeb) return false;
-    try {
-      final jsonStr = jsPrintIsConnected(type);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['connected'] == true;
+      final resp = await http
+          .get(Uri.parse("$baseUrl/status"))
+          .timeout(const Duration(seconds: 2));
+      return resp.statusCode == 200;
     } catch (_) {
       return false;
     }
   }
 
-  /// Disconnect a serial printer.
-  static Future<void> disconnectSerial(String type) async {
-    if (!kIsWeb) return;
+  /// Fetch fresh status from server and update cache.
+  static Future<Map<String, dynamic>> refreshStatus() async {
     try {
-      await jsPrintDisconnect(type);
-    } catch (e) {
-      debugPrint('EscPosPrintService.disconnectSerial($type) error: $e');
-    }
-  }
-
-  /// Send raw data via Web Serial.
-  static Future<bool> printDataSerial(String type, Uint8List data) async {
-    if (!kIsWeb || !isSerialConnected(type)) return false;
-    try {
-      final jsonStr = await jsPrintPrint(type, data);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['success'] == true;
-    } catch (e) {
-      debugPrint('EscPosPrintService.printDataSerial($type) error: $e');
-      return false;
-    }
-  }
-
-  /// Auto-reconnect to a previously authorized serial port (no dialog).
-  static Future<bool> autoReconnectSerial(String type) async {
-    if (!kIsWeb) return false;
-    try {
-      final vid = await _getSavedVendorId(type);
-      if (vid == null) return false;
-      final jsonStr = await jsPrintAutoReconnect(type, vendorId: vid, productId: await _getSavedProductId(type));
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['success'] == true;
-    } catch (e) {
-      debugPrint('EscPosPrintService.autoReconnectSerial($type) error: $e');
-      return false;
-    }
-  }
-
-  /// Scan all previously authorized serial ports (no dialog).
-  static Future<List<Map<String, dynamic>>> scanAllPorts() async {
-    if (!kIsWeb) return [];
-    try {
-      final jsonStr = await jsPrintScanAllPorts();
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      final ports = result['ports'] as List?;
-      if (ports == null) return [];
-      return ports.cast<Map<String, dynamic>>();
-    } catch (e) {
-      debugPrint('EscPosPrintService.scanAllPorts error: $e');
-      return [];
-    }
-  }
-
-  // ═════════════════════════════════════════════════════════════════════════
-  // WebUSB API (Fallback)
-  // ═════════════════════════════════════════════════════════════════════════
-
-  /// Check if WebUSB API is available in this browser.
-  static bool isWebUsbAvailable() {
-    if (!kIsWeb) return false;
-    return jsCheckWebUsbAvailable();
-  }
-
-  /// Connect to a USB printer via WebUSB API.
-  static Future<bool> connectPrinterUsb(String type) async {
-    if (!kIsWeb) return false;
-    try {
-      final jsonStr = await jsPrintUsbConnect(type);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      if (result['success'] == true) {
-        final newVid = result['vendorId'] as int?;
-        final newPid = result['productId'] as int?;
-        debugPrint('USB printer connected ($type): vendor=$newVid, product=$newPid');
-        if (newVid != null) await _saveVendorId(type, newVid, newPid);
-        return true;
+      final resp = await http
+          .get(Uri.parse("$baseUrl/status"))
+          .timeout(const Duration(seconds: 2));
+      if (resp.statusCode == 200) {
+        _cachedStatus = jsonDecode(resp.body) as Map<String, dynamic>;
+        _lastStatusFetch = DateTime.now();
       }
-      if (result['cancelled'] == true) {
-        debugPrint('User cancelled USB printer selection ($type)');
-      } else {
-        debugPrint('USB connection failed ($type): ${result['error']}');
-      }
-      return false;
-    } catch (e) {
-      debugPrint('EscPosPrintService.connectPrinterUsb($type) error: $e');
-      return false;
-    }
-  }
-
-  /// Check if a specific printer type is connected via WebUSB.
-  static bool isUsbConnected(String type) {
-    if (!kIsWeb) return false;
-    try {
-      final jsonStr = jsPrintUsbIsConnected(type);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['connected'] == true;
     } catch (_) {
-      return false;
+      _cachedStatus = {"status": "unreachable"};
     }
+    return _cachedStatus;
   }
 
-  /// Disconnect a USB printer.
-  static Future<void> disconnectUsb(String type) async {
-    if (!kIsWeb) return;
-    try {
-      await jsPrintUsbDisconnect(type);
-    } catch (e) {
-      debugPrint('EscPosPrintService.disconnectUsb($type) error: $e');
-    }
-  }
+  /// Get cached server status.
+  static Map<String, dynamic> getServerStatus() => _cachedStatus;
 
-  /// Send raw data via WebUSB.
-  static Future<bool> printDataUsb(String type, Uint8List data) async {
-    if (!kIsWeb || !isUsbConnected(type)) return false;
-    try {
-      final jsonStr = await jsPrintUsbPrint(type, data);
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['success'] == true;
-    } catch (e) {
-      debugPrint('EscPosPrintService.printDataUsb($type) error: $e');
-      return false;
-    }
-  }
-
-  /// Auto-reconnect to a previously authorized USB printer (no dialog).
-  static Future<bool> autoReconnectUsb(String type) async {
-    if (!kIsWeb) return false;
-    try {
-      final vid = await _getSavedVendorId(type);
-      if (vid == null) return false;
-      final jsonStr = await jsPrintUsbAutoReconnect(type, vendorId: vid, productId: await _getSavedProductId(type));
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-      return result['success'] == true;
-    } catch (e) {
-      debugPrint('EscPosPrintService.autoReconnectUsb($type) error: $e');
-      return false;
-    }
-  }
-
-  // ═════════════════════════════════════════════════════════════════════════
-  // Unified API (used by main.dart)
-  // ═════════════════════════════════════════════════════════════════════════
-
-  /// Check if any printer API is available in this browser.
-  static bool isAvailable() {
-    if (!kIsWeb) return false;
-    return jsCheckWebSerialAvailable() || jsCheckWebUsbAvailable();
-  }
-
-  /// Check if a specific printer type is connected (via any method).
+  /// Check if a printer type is connected (uses cached status).
+  /// Call [refreshStatus] first to get fresh data.
   static bool isConnected(String type) {
-    return isSerialConnected(type) || isUsbConnected(type);
+    final key = type == labelPrinterType ? "labelPrinter" : "receiptPrinter";
+    final printer = _cachedStatus[key] as Map<String, dynamic>?;
+    return printer?["connected"] == true;
   }
 
-  /// Connect to a printer (tries Serial first, falls back to WebUSB).
+  /// Connect (refreshes server status; server auto-connects).
   static Future<bool> connectPrinter({required String type}) async {
-    if (!kIsWeb || !isAvailable()) return false;
-
-    // Try Web Serial first (most common for thermal printers)
-    if (jsCheckWebSerialAvailable()) {
-      final ok = await connectPrinterSerial(type);
-      if (ok) return true;
-    }
-
-    // Fallback to WebUSB
-    if (jsCheckWebUsbAvailable()) {
-      return await connectPrinterUsb(type);
-    }
-
-    return false;
+    await refreshStatus();
+    return isConnected(type);
   }
 
-  /// Disconnect a printer (disconnects both Serial and WebUSB).
-  static Future<void> disconnectPrinter(String type) async {
-    if (!kIsWeb) return;
-    await disconnectSerial(type);
-    await disconnectUsb(type);
-  }
+  /// Disconnect (no-op; server manages connections).
+  static Future<void> disconnectPrinter(String type) async {}
 
-  /// Auto-reconnect to a previously authorized printer (tries Serial, then WebUSB).
-  static Future<bool> autoReconnect(String type) async {
-    if (!kIsWeb) return false;
-
-    // Try Serial first
-    if (jsCheckWebSerialAvailable()) {
-      final ok = await autoReconnectSerial(type);
-      if (ok) return true;
-    }
-
-    // Fallback to WebUSB
-    if (jsCheckWebUsbAvailable()) {
-      return await autoReconnectUsb(type);
-    }
-
-    return false;
-  }
-
-  /// Send raw data via any available connection (Serial first, then WebUSB).
-  static Future<bool> printViaAny(String type, Uint8List data) async {
-    if (!kIsWeb) return false;
-
-    // Try Serial first
-    if (isSerialConnected(type)) {
-      final ok = await printDataSerial(type, data);
-      if (ok) return true;
-    }
-
-    // Fallback to WebUSB
-    if (isUsbConnected(type)) {
-      return await printDataUsb(type, data);
-    }
-
-    debugPrint('printViaAny($type): no connection available');
-    return false;
-  }
-
-  /// Auto-reconnect ALL printers on app startup.
-  static Future<void> autoReconnectAll() async {
-    if (!kIsWeb) return;
-    // First sync saved IDs to JS bridge
-    await setSavedDevicesInJs();
-
-    for (final type in [labelPrinterType, receiptPrinterType]) {
-      await autoReconnect(type);
-    }
-  }
-
-  /// Get the USB vendor ID of a connected printer (via any method), or null.
-  static int? getConnectedVendorId(String type) {
-    if (!kIsWeb) return null;
+  /// Send raw ESC/POS data to the local print server.
+  static Future<bool> _sendData(String type, Uint8List data) async {
     try {
-      if (isSerialConnected(type)) {
-        final jsonStr = jsPrintIsConnected(type);
-        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return result['vendorId'] as int?;
+      final endpoint = type == labelPrinterType
+          ? "/print/label"
+          : "/print/receipt";
+      final body = jsonEncode({"data": base64Encode(data)});
+      final resp = await http
+          .post(
+            Uri.parse("$baseUrl$endpoint"),
+            headers: {"Content-Type": "application/json"},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 200) {
+        final result = jsonDecode(resp.body) as Map<String, dynamic>;
+        return result["success"] == true;
       }
-      if (isUsbConnected(type)) {
-        final jsonStr = jsPrintUsbIsConnected(type);
-        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return result['vendorId'] as int?;
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  /// Get the USB product ID of a connected printer (via any method), or null.
-  static int? getConnectedProductId(String type) {
-    if (!kIsWeb) return null;
-    try {
-      if (isSerialConnected(type)) {
-        final jsonStr = jsPrintIsConnected(type);
-        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return result['productId'] as int?;
-      }
-      if (isUsbConnected(type)) {
-        final jsonStr = jsPrintUsbIsConnected(type);
-        final result = jsonDecode(jsonStr) as Map<String, dynamic>;
-        return result['productId'] as int?;
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  // ─── Helper: Saved Device IDs ──────────────────────────────────────────
-
-  static Future<int?> _getSavedVendorId(String type) async {
-    try {
-      final val = await DatabaseHelper.getSetting('usb_vid_' + type);
-      if (val != null && val.isNotEmpty) return int.tryParse(val);
-    } catch (_) {}
-    return null;
-  }
-
-  static Future<int?> _getSavedProductId(String type) async {
-    try {
-      final val = await DatabaseHelper.getSetting('usb_pid_' + type);
-      if (val != null && val.isNotEmpty) return int.tryParse(val);
-    } catch (_) {}
-    return null;
-  }
-
-  static Future<void> _saveVendorId(String type, int vendorId, int? productId) async {
-    try {
-      await DatabaseHelper.saveSetting('usb_vid_' + type, vendorId.toString());
-      if (productId != null) {
-        await DatabaseHelper.saveSetting('usb_pid_' + type, productId.toString());
-      }
+      return false;
     } catch (e) {
-      debugPrint('Error saving USB IDs for ' + type + ': ' + e.toString());
+      debugPrint("EscPosPrintService._sendData error: $e");
+      return false;
     }
   }
 
-  /// Sync saved USB vendor/product IDs from persistent storage to the JS bridge.
-  static Future<void> setSavedDevicesInJs() async {
-    if (!kIsWeb) return;
-    try {
-      for (final type in [labelPrinterType, receiptPrinterType]) {
-        final vid = await _getSavedVendorId(type);
-        final pid = await _getSavedProductId(type);
-        jsPrintSetSavedDeviceIds(type, vid, pid);
-      }
-    } catch (e) {
-      debugPrint('EscPosPrintService.setSavedDevicesInJs error: ' + e.toString());
-    }
-  }
-
-  // ─── Print Functions ──────────────────────────────────────────────────
-
-  /// Print a label to the connected label printer.
+  /// Print a label to XP-370B via the local server.
   static Future<bool> printLabel(Ticket ticket) async {
-    if (!kIsWeb) return false;
     try {
       final data = _buildLabelEscPos(ticket);
-      return await printViaAny(labelPrinterType, data);
+      return await _sendData(labelPrinterType, data);
     } catch (e) {
-      debugPrint('EscPosPrintService.printLabel error: ' + e.toString());
+      debugPrint("EscPosPrintService.printLabel error: $e");
       return false;
     }
   }
 
-  /// Print a receipt to the connected receipt printer.
+  /// Print a receipt to XP-80C via the local server.
   static Future<bool> printReceipt(Ticket ticket, {int copies = 1}) async {
-    if (!kIsWeb) return false;
     try {
       for (int i = 0; i < copies; i++) {
-        final data = _buildReceiptEscPos(ticket, copyIndex: i + 1, totalCopies: copies);
-        final ok = await printViaAny(receiptPrinterType, data);
-        if (!ok) {
-          debugPrint('ESC/POS receipt copy ${i + 1} failed');
-          return false;
-        }
+        final data = _buildReceiptEscPos(ticket, i + 1, copies);
+        final ok = await _sendData(receiptPrinterType, data);
+        if (!ok) return false;
       }
-      debugPrint('ESC/POS receipt printed successfully ($copies copies)');
       return true;
     } catch (e) {
-      debugPrint('EscPosPrintService.printReceipt error: ' + e.toString());
+      debugPrint("EscPosPrintService.printReceipt error: $e");
       return false;
     }
   }
 
-  // ─── ESC/POS Layout Builders ──────────────────────────────────────────
+  // ─── ESC/POS Layouts ──────────────────────────────────────────────────
 
-  static Uint8List _buildLabelEscPos(Ticket ticket) {
+  static Uint8List _buildLabelEscPos(Ticket t) {
     final b = EscPosBuilder();
     b.init();
     b.align(1);
-
     b.charSize(2, 2);
-    b.textLn('العطار استور');
+    b.textLn("العطار استور");
     b.charSize(1, 1);
-    b.textLn('================');
-
+    b.textLn("================");
     b.bold(true);
-    b.textLn('العميل: ${ticket.customerName ?? "---"}');
+    b.textLn("العميل: ${t.customerName ?? "---"}");
     b.bold(false);
-    if (ticket.customerPhone != null && ticket.customerPhone!.isNotEmpty) {
-      b.textLn('هاتف: ${ticket.customerPhone}');
+    if (t.customerPhone != null && t.customerPhone!.isNotEmpty) {
+      b.textLn("هاتف: ${t.customerPhone}");
     }
-    b.textLn('');
-
+    b.textLn("");
     b.bold(true);
-    b.textLn('الجهاز: ${ticket.deviceModel}');
+    b.textLn("الجهاز: ${t.deviceModel}");
     b.bold(false);
-    if (ticket.problem.isNotEmpty) {
-      b.textLn('العطل: ${ticket.problem}');
-    }
-    b.textLn('');
-
-    final dateStr = DateFormat('yyyy-MM-dd').format(ticket.receivedDate);
-    b.textLn('التاريخ: $dateStr');
-    b.textLn('رقم التذكرة: ${ticket.id ?? "---"}');
-
-    if (ticket.id != null) {
+    if (t.problem.isNotEmpty) b.textLn("العطل: ${t.problem}");
+    b.textLn("");
+    final ds = DateFormat("yyyy-MM-dd").format(t.receivedDate);
+    b.textLn("التاريخ: $ds");
+    b.textLn("رقم التذكرة: ${t.id ?? "---"}");
+    if (t.id != null) {
       b.feed(1);
       b.align(1);
-      b.barcode128(ticket.id.toString());
+      b.barcode128(t.id.toString());
     }
-
     b.align(1);
-    b.textLn('');
-    b.textLn('شكراً لثقتكم');
-    b.textLn('Developed By Eng: BELALZAGHL0L');
-
+    b.textLn("");
+    b.textLn("شكراً لثقتكم");
+    b.textLn("Developed By Eng: BELALZAGHL0L");
     b.feed(3);
     b.cut();
     return b.build();
   }
 
-  static Uint8List _buildReceiptEscPos(Ticket ticket, {int copyIndex = 1, int totalCopies = 1}) {
+  static Uint8List _buildReceiptEscPos(Ticket t, int copyIdx, int total) {
     final b = EscPosBuilder();
     b.init();
     b.align(1);
-
     b.charSize(2, 2);
     b.bold(true);
-    b.textLn('العطار استور');
+    b.textLn("العطار استور");
     b.charSize(1, 1);
     b.bold(false);
-    b.textLn('نظام صيانة الموبايلات');
+    b.textLn("نظام صيانة الموبايلات");
     b.hr();
-
     b.align(0);
-    final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(ticket.receivedDate);
-    b.textLn('التاريخ: $dateStr');
-    b.textLn('رقم التذكرة: ${ticket.id ?? "---"}');
-    b.textLn('');
-
+    final ds = DateFormat("yyyy-MM-dd HH:mm").format(t.receivedDate);
+    b.textLn("التاريخ: $ds");
+    b.textLn("رقم التذكرة: ${t.id ?? "---"}");
+    b.textLn("");
     b.bold(true);
-    b.textLn('بيانات العميل:');
+    b.textLn("بيانات العميل:");
     b.bold(false);
-    b.textLn('الاسم: ${ticket.customerName ?? "---"}');
-    if (ticket.customerPhone != null && ticket.customerPhone!.isNotEmpty) {
-      b.textLn('الهاتف: ${ticket.customerPhone}');
+    b.textLn("الاسم: ${t.customerName ?? "---"}");
+    if (t.customerPhone != null && t.customerPhone!.isNotEmpty) {
+      b.textLn("الهاتف: ${t.customerPhone}");
     }
-    b.textLn('');
-
+    b.textLn("");
     b.bold(true);
-    b.textLn('بيانات الجهاز:');
+    b.textLn("بيانات الجهاز:");
     b.bold(false);
-    b.textLn('الموديل: ${ticket.deviceModel ?? "---"}');
-    if (ticket.deviceCondition.isNotEmpty) {
-      b.textLn('الحالة: ${ticket.deviceCondition}');
-    }
-    b.textLn('');
-
+    b.textLn("الموديل: ${t.deviceModel ?? "---"}");
+    if (t.deviceCondition.isNotEmpty) b.textLn("الحالة: ${t.deviceCondition}");
+    b.textLn("");
     b.bold(true);
-    b.textLn('العطل:');
+    b.textLn("العطل:");
     b.bold(false);
-    b.textLn(ticket.problem.isEmpty ? '---' : ticket.problem);
-    b.textLn('');
-
+    b.textLn(t.problem.isEmpty ? "---" : t.problem);
+    b.textLn("");
     b.hr();
     b.bold(true);
     b.charSize(2, 2);
-    b.textLn('الإجمالي: ${ticket.cost.toStringAsFixed(2)} ج.م');
+    b.textLn("الإجمالي: ${t.cost.toStringAsFixed(2)} ج.م");
     b.charSize(1, 1);
     b.bold(false);
-
     b.hr();
-    if (ticket.paymentMethod != null && ticket.paymentMethod!.isNotEmpty) {
-      b.textLn('طريقة الدفع: ${ticket.paymentMethod}');
+    if (t.paymentMethod != null && t.paymentMethod!.isNotEmpty) {
+      b.textLn("طريقة الدفع: ${t.paymentMethod}");
     }
-    if (ticket.technicianName != null && ticket.technicianName!.isNotEmpty) {
-      b.textLn('الفني: ${ticket.technicianName}');
+    if (t.technicianName != null && t.technicianName!.isNotEmpty) {
+      b.textLn("الفني: ${t.technicianName}");
     }
-
     b.align(1);
     b.hr();
-    b.textLn('');
-    b.textLn('شكراً لثقتكم في العطار استور');
-
-    final qrData = 'ELATTAR:${ticket.id}:${ticket.cost.toStringAsFixed(2)}';
-    b.align(1);
-    b.qrCode(qrData);
-
-    if (totalCopies > 1) {
+    b.textLn("");
+    b.textLn("شكراً لثقتكم في العطار استور");
+    if (t.id != null) {
       b.align(1);
-      b.textLn('(نسخة $copyIndex من $totalCopies)');
+      b.qrCode("ELATTAR:${t.id}:${t.cost.toStringAsFixed(2)}");
     }
-
-    b.textLn('');
-    b.textLn('Developed By Eng: BELALZAGHL0L');
+    if (total > 1) {
+      b.align(1);
+      b.textLn("(نسخة $copyIdx من $total)");
+    }
+    b.textLn("");
+    b.textLn("Developed By Eng: BELALZAGHL0L");
     b.feed(4);
     b.cut();
     return b.build();
