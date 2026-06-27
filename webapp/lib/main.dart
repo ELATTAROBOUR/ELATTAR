@@ -6533,6 +6533,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   List<Printer> _printers = [];
   bool _loading = true;
   bool _serverAlive = false;
+  bool _startingServer = false;
 
   String? _selectedLabel;
   String? _selectedReceipt;
@@ -6601,6 +6602,66 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
         ),
       );
     }
+  }
+
+  // ─── Try to start the print server ──────────────────────────────────
+  /// Copies the PowerShell command to clipboard and attempts to connect.
+  Future<void> _tryStartServer() async {
+    final scaffold = ScaffoldMessenger.of(context);
+
+    // First re-check status in case it started since we last checked
+    final status = await LocalPrintService.checkStatus();
+    if (status.alive) {
+      // Server is already running — just reload
+      await _loadData();
+      scaffold.showSnackBar(
+        const SnackBar(
+          content: Text('✅ خادم الطباعة يعمل بالفعل'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _startingServer = true);
+
+    // Copy command to clipboard
+    const cmd = 'powershell -ExecutionPolicy Bypass -File print_server.ps1';
+    await Clipboard.setData(const ClipboardData(text: cmd));
+
+    // Try a few more times with short delays (user may have just launched it)
+    for (int i = 0; i < 5; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+      final retry = await LocalPrintService.checkStatus();
+      if (retry.alive) {
+        if (mounted) {
+          scaffold.showSnackBar(
+            const SnackBar(
+              content: Text('✅ خادم الطباعة شغال! تم تحميل الطابعات'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          await _loadData();
+        }
+        setState(() => _startingServer = false);
+        return;
+      }
+    }
+
+    if (mounted) {
+      scaffold.showSnackBar(
+        const SnackBar(
+          content: Text(
+            '📋 تم نسخ الأمر! افتح PowerShell والصق الأمر لتشغيل الخادم',
+          ),
+          backgroundColor: Color(0xFFD4AF37),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    setState(() => _startingServer = false);
   }
 
   // ─── Web Printer Dialog (local print server) ───────────────────────
@@ -6763,33 +6824,61 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                                 ),
                               ],
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              'يمكنك إضافة الأمر إلى startup لتشغيله تلقائياً مع ويندوز',
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                color: Color(0xFF8899AA),
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFD4AF37),
-                          foregroundColor: const Color(0xFF1A2A3A),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 12,
+                      const SizedBox(height: 16),
+
+                      // ── Quick-launch buttons ──────────────────────────
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: _startingServer
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF1A2A3A),
+                                  ),
+                                )
+                              : const Icon(Icons.copy_rounded, size: 20),
+                          label: Text(
+                            _startingServer
+                                ? 'جاري الاتصال...'
+                                : '📋 نسخ الأمر وتشغيل الخادم',
+                            style: const TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 14,
+                            ),
                           ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD4AF37),
+                            foregroundColor: const Color(0xFF1A2A3A),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _startingServer ? null : _tryStartServer,
                         ),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          'حسناً',
-                          style: TextStyle(fontFamily: 'Cairo', fontSize: 16),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text(
+                            'حسناً',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 16,
+                              color: Color(0xFF8899AA),
+                            ),
+                          ),
                         ),
                       ),
                     ] else ...[
