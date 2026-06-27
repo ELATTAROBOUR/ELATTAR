@@ -18,6 +18,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
+
+import 'esc_pos_print_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:arabic_reshaper/arabic_reshaper.dart';
 
@@ -547,7 +549,17 @@ class PrintService {
       );
 
       if (kIsWeb) {
-        // On web: use browser print dialog
+        // On web: try direct USB ESC/POS first, fall back to browser dialog
+        if (EscPosPrintService.isConnected(EscPosPrintService.labelPrinterType)) {
+          final success = await EscPosPrintService.printLabel(ticket);
+          if (success) {
+            debugPrint('Label print completed via USB ESC/POS');
+            return;
+          }
+          debugPrint(
+            'USB ESC/POS label failed, falling back to browser dialog',
+          );
+        }
         await Printing.layoutPdf(
           onLayout: (_) async => bytes,
           format: pageFormat,
@@ -614,7 +626,18 @@ class PrintService {
       );
 
       if (kIsWeb) {
-        // On web: use browser print dialog
+        // On web: try direct USB ESC/POS first, fall back to browser dialog
+        if (EscPosPrintService.isConnected(EscPosPrintService.receiptPrinterType)) {
+          final success = await EscPosPrintService.printReceipt(
+            ticket,
+            copies: copies,
+          );
+          if (success) {
+            debugPrint('Receipt print completed via USB ESC/POS');
+            return;
+          }
+          debugPrint('USB ESC/POS receipt failed, falling back to browser dialog');
+        }
         await Printing.layoutPdf(
           onLayout: (_) async => bytes,
           format: pageFormat,

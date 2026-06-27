@@ -39,6 +39,7 @@ import 'views/branches_view.dart';
 import 'views/attendance_view.dart';
 import 'services/whatsapp_service.dart';
 import 'widgets/smart_search_dialog.dart';
+import 'esc_pos_print_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -6217,6 +6218,268 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     }
   }
 
+  // ─── Web USB Printer Connection Dialog ──────────────────────────────────
+
+  Widget _buildWebDialog(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppTheme.cardBg(context),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(
+        width: 440,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.usb_outlined,
+                color: Color(0xFFD4AF37),
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'إعدادات الطباعة',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFD4AF37),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'قم بتوصيل الطابعات عبر USB للطباعة التلقائية',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                  color: Color(0xFF8899AA),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Label Printer ──────────────────────────────────────────
+              _buildPrinterRow(
+                context,
+                title: 'طابعة الملصقات (XP-370B)',
+                icon: Icons.label_outline,
+                connected: EscPosPrintService.isConnected(
+                  EscPosPrintService.labelPrinterType,
+                ),
+                onConnect: () => _connectUsbPrinter(
+                  EscPosPrintService.labelPrinterType,
+                ),
+                onDisconnect: () => _disconnectUsbPrinter(
+                  EscPosPrintService.labelPrinterType,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // ── Receipt Printer ────────────────────────────────────────
+              _buildPrinterRow(
+                context,
+                title: 'طابعة الفواتير (XP-80C)',
+                icon: Icons.receipt_long_outlined,
+                connected: EscPosPrintService.isConnected(
+                  EscPosPrintService.receiptPrinterType,
+                ),
+                onConnect: () => _connectUsbPrinter(
+                  EscPosPrintService.receiptPrinterType,
+                ),
+                onDisconnect: () => _disconnectUsbPrinter(
+                  EscPosPrintService.receiptPrinterType,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // ── Info text ──────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2A3A),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, color: Color(0xFFD4AF37), size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'عند توصيل الطابعات عبر USB، سيتم الطباعة تلقائياً دون الحاجة لاختيار الطابعة في كل مرة.',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          color: Color(0xFF8899AA),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Close button ───────────────────────────────────────────
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: const Color(0xFF1A2A3A),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسناً', style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrinterRow(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required bool connected,
+    required VoidCallback onConnect,
+    required VoidCallback onDisconnect,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2A3A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: connected
+              ? const Color(0xFF4CAF50).withOpacity(0.5)
+              : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFFD4AF37), size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: connected
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF666666),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      connected ? '🖨️ متصلة' : 'غير متصلة',
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11,
+                        color: connected
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF666666),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (connected)
+            SizedBox(
+              height: 32,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEF5350),
+                  side: const BorderSide(color: Color(0xFFEF5350)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: onDisconnect,
+                child: const Text('قطع', style: TextStyle(fontSize: 12)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 32,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: const Color(0xFF1A2A3A),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: onConnect,
+                child: const Text('توصيل', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connectUsbPrinter(String type) async {
+    try {
+      final success = await EscPosPrintService.connectPrinter(type: type);
+      if (mounted) {
+        setState(() {}); // Refresh UI
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? '✅ تم توصيل الطابعة بنجاح'
+                  : '❌ فشل توصيل الطابعة',
+            ),
+            backgroundColor: success ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ خطأ: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _disconnectUsbPrinter(String type) async {
+    await EscPosPrintService.disconnectPrinter(type);
+    if (mounted) {
+      setState(() {}); // Refresh UI
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم قطع اتصال الطابعة'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   bool _isMissing(String? name) {
     if (name == null || name.isEmpty) return false;
     return !_printers.any((p) => p.name == name);
@@ -6225,71 +6488,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     if (kIsWeb) {
-      return Dialog(
-        backgroundColor: AppTheme.cardBg(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SizedBox(
-          width: 400,
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.print_outlined,
-                  color: Color(0xFFD4AF37),
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'الطباعة عبر المتصفح',
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFD4AF37),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'عند الطباعة من نسخة الويب، سيتم فتح نافذة الطباعة\nفي المتصفح حيث يمكنك اختيار الطابعة المناسبة.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    color: AppTheme.textMuted(context),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '📌 يمكنك إعداد الطابعة الافتراضية\nمن إعدادات المتصفح مباشرة.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 12,
-                    color: AppTheme.textDisabled(context),
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4AF37),
-                    foregroundColor: const Color(0xFF1A2A3A),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('حسناً', style: TextStyle(fontSize: 16)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _buildWebDialog(context);
     }
 
     return Dialog(
