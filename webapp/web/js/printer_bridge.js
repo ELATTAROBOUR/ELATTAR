@@ -65,7 +65,10 @@ async function __printerPrint(type, data) {
     if (!conn || !conn.writer) {
       return JSON.stringify({ success: false, error: 'Printer not connected' });
     }
-    await conn.writer.write(data);
+    // Web Serial API requires a BufferSource (Uint8Array, ArrayBuffer, etc.),
+    // not a plain JS array. Convert if needed.
+    const uint8Data = (data instanceof Uint8Array) ? data : new Uint8Array(data);
+    await conn.writer.write(uint8Data);
     return JSON.stringify({ success: true });
   } catch (e) {
     return JSON.stringify({ success: false, error: e.message || String(e) });

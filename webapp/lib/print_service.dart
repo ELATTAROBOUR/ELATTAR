@@ -559,10 +559,12 @@ class PrintService {
             return;
           }
           debugPrint('USB ESC/POS label print failed');
+          throw Exception('فشلت طباعة الملصق عبر USB');
         }
-        // Printer not connected — print silently fails (no browser dialog)
         debugPrint('Label printer not connected, skipping print');
-        return;
+        throw Exception(
+          'الطابعة غير متصلة. قم بتوصيل الطابعة أولاً من إعدادات الطباعة',
+        );
       } else {
         final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
@@ -636,10 +638,12 @@ class PrintService {
             return;
           }
           debugPrint('USB ESC/POS receipt print failed');
+          throw Exception('فشلت طباعة الإيصال عبر USB');
         }
-        // Printer not connected — print silently fails (no browser dialog)
         debugPrint('Receipt printer not connected, skipping print');
-        return;
+        throw Exception(
+          'الطابعة غير متصلة. قم بتوصيل الطابعة أولاً من إعدادات الطباعة',
+        );
       } else {
         final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
