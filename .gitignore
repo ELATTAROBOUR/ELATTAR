@@ -1,0 +1,65 @@
+# ─── Secrets / Sensitive config files ──────────────────────────────
+# These files contain credentials (GitHub tokens, Supabase keys, etc.)
+# Use the .example files as templates and keep actual values locally.
+sync_config.json
+**/sync_config.json
+*.db
+**/*.db
+
+# ─── Build outputs / binaries ──────────────────────────────────────
+/dist/
+/keygen/
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.exp
+*.lib
+
+# ─── Logs ──────────────────────────────────────────────────────────
+*.log
+backup_*.log
+build_verbose.log
+flutter_*.log
+
+# ─── IDE / Editor ──────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.atom/
+.svn/
+.history
+
+# ─── OS ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Flutter/Dart ──────────────────────────────────────────────────
+.dart_tool/
+.pub-cache/
+.pub/
+build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.flutter-plugins-dependencies
+/coverage/
+
+# ─── Scratch / temp ────────────────────────────────────────────────
+merge_test_*/
+scratch/*.db
+
+# ─── Backups ───────────────────────────────────────────────────────
+*.bak
+*.bak.utf8
+
+# ─── Symbolication ─────────────────────────────────────────────────
+app.*.symbols
+app.*.map.json
+
+# ─── Android Studio ────────────────────────────────────────────────
+/android/app/debug
+/android/app/profile
+/android/app/release

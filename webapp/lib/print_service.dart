@@ -17,11 +17,9 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:http/http.dart' as http;
-
-import 'esc_pos_print_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:arabic_reshaper/arabic_reshaper.dart';
+import 'package:http/http.dart' as http;
 
 import 'models.dart';
 import 'printer_settings_service.dart';
@@ -548,25 +546,23 @@ class PrintService {
         marginAll: 1 * PdfPageFormat.mm,
       );
 
+      // On web: open browser print dialog. On desktop: send to printer directly.
+      final config = await PrinterSettingsService.load();
+
       if (kIsWeb) {
-        // On web: print directly via USB ESC/POS (silent, no browser dialog)
-        if (EscPosPrintService.isConnected(
-          EscPosPrintService.labelPrinterType,
-        )) {
-          final success = await EscPosPrintService.printLabel(ticket);
-          if (success) {
-            debugPrint('Label print completed via USB ESC/POS');
-            return;
-          }
-          debugPrint('USB ESC/POS label print failed');
-          throw Exception('فشلت طباعة الملصق عبر USB');
-        }
-        debugPrint('Label printer not connected, skipping print');
-        throw Exception(
-          'الطابعة غير متصلة. قم بتوصيل الطابعة أولاً من إعدادات الطباعة',
+        // Web: open browser's native print dialog (PDF)
+        debugPrint('Label print via browser print dialog');
+        final result = await Printing.layoutPdf(
+          onLayout: (_) async => bytes,
+          format: pageFormat,
         );
+        if (result) {
+          debugPrint('Label print completed via browser');
+          return;
+        }
+        debugPrint('Browser print was cancelled');
+        throw Exception('تم إلغاء الطباعة من المتصفح');
       } else {
-        final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
           config.labelPrinterName,
           'طابعة الملصقات',
@@ -624,28 +620,23 @@ class PrintService {
         marginBottom: 4 * PdfPageFormat.mm,
       );
 
+      // On web: open browser print dialog. On desktop: send to printer directly.
+      final config = await PrinterSettingsService.load();
+
       if (kIsWeb) {
-        // On web: print directly via USB ESC/POS (silent, no browser dialog)
-        if (EscPosPrintService.isConnected(
-          EscPosPrintService.receiptPrinterType,
-        )) {
-          final success = await EscPosPrintService.printReceipt(
-            ticket,
-            copies: copies,
-          );
-          if (success) {
-            debugPrint('Receipt print completed via USB ESC/POS');
-            return;
-          }
-          debugPrint('USB ESC/POS receipt print failed');
-          throw Exception('فشلت طباعة الإيصال عبر USB');
-        }
-        debugPrint('Receipt printer not connected, skipping print');
-        throw Exception(
-          'الطابعة غير متصلة. قم بتوصيل الطابعة أولاً من إعدادات الطباعة',
+        // Web: open browser's native print dialog (PDF)
+        debugPrint('Receipt print via browser print dialog');
+        final result = await Printing.layoutPdf(
+          onLayout: (_) async => bytes,
+          format: pageFormat,
         );
+        if (result) {
+          debugPrint('Receipt print completed via browser');
+          return;
+        }
+        debugPrint('Browser print was cancelled');
+        throw Exception('تم إلغاء الطباعة من المتصفح');
       } else {
-        final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
           config.receiptPrinterName,
           'طابعة الفواتير',

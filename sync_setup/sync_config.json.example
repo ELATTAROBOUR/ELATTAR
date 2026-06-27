@@ -1,0 +1,10 @@
+{
+  "repo_url": "https://YOUR_GITHUB_TOKEN@github.com/YOUR_ORG/YOUR_REPO.git",
+  "branch_name": "main",
+  "store_email": "store@example.com",
+  "store_name": "YOUR STORE",
+  "machine_id": "1",
+  "sync_time": "00:00",
+  "supabase_url": "YOUR_SUPABASE_URL",
+  "supabase_anon_key": "YOUR_SUPABASE_ANON_KEY"
+}

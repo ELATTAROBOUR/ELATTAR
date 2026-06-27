@@ -6540,11 +6540,6 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     super.initState();
     if (!kIsWeb) {
       _loadData();
-    } else {
-      // Refresh cached printer status from the local HTTP server
-      EscPosPrintService.refreshStatus().then((_) {
-        if (mounted) setState(() {});
-      });
     }
   }
 
@@ -6580,18 +6575,9 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     }
   }
 
-  // ─── Web Printer Status Dialog (local HTTP server) ─────────────────────
+  // ─── Web Printer Info Dialog (Printing via browser) ──────────────────
 
   Widget _buildWebDialog(BuildContext context) {
-    final serverStatus = EscPosPrintService.getServerStatus();
-    final serverReachable = serverStatus['status'] != 'unreachable';
-    final labelConnected = EscPosPrintService.isConnected(
-      EscPosPrintService.labelPrinterType,
-    );
-    final receiptConnected = EscPosPrintService.isConnected(
-      EscPosPrintService.receiptPrinterType,
-    );
-
     return Dialog(
       backgroundColor: AppTheme.cardBg(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -6602,14 +6588,14 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                serverReachable ? Icons.print_rounded : Icons.usb_off_rounded,
-                color: const Color(0xFFD4AF37),
+              const Icon(
+                Icons.print_rounded,
+                color: Color(0xFFD4AF37),
                 size: 48,
               ),
               const SizedBox(height: 16),
               const Text(
-                'إعدادات الطباعة',
+                'الطباعة',
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 20,
@@ -6618,171 +6604,100 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: serverReachable
-                          ? const Color(0xFF4CAF50)
-                          : const Color(0xFFEF5350),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    serverReachable
-                        ? '🖥️ خادم الطباعة متصل'
-                        : '⚠️ خادم الطباعة غير متصل',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 13,
-                      color: Color(0xFFD4AF37),
-                    ),
-                  ),
-                ],
+              const Text(
+                'سيتم الطباعة عبر نافذة المتصفح',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                  color: Color(0xFFD4AF37),
+                ),
               ),
-              if (!serverReachable) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'قم بتشغيل print_server.ps1 على جهاز الويندوز',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 11,
-                    color: Color(0xFF8899AA),
+              const SizedBox(height: 4),
+              const Text(
+                'عند الطباعة، ستظهر نافذة الطباعة الخاصة بالمتصفح.\nاختر الطابعة المناسبة (XP-370B للملصقات / XP-80C للفواتير)',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
+                  color: Color(0xFF8899AA),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2A3A),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Color(0xFFD4AF37),
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '💡 يمكنك اختيار الطابعة الافتراضية في المتصفح لتجنب اختيارها كل مرة',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Color(0xFF8899AA),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.print_outlined,
+                          color: Color(0xFFD4AF37),
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🖨️ الملصقات (XP-370B): مقاس A6 (62×29mm)\n   الفواتير (XP-80C): مقاس A4 تقريبي (80mm)',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Color(0xFF8899AA),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: const Color(0xFF1A2A3A),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
                   ),
                 ),
-              ],
-              const SizedBox(height: 20),
-
-              // ── Label Printer ──────────────────────────────────────────
-              _buildWebPrinterRow(
-                title: 'XP-370B (الملصقات)',
-                icon: Icons.label_outline,
-                connected: labelConnected,
-              ),
-              const SizedBox(height: 12),
-
-              // ── Receipt Printer ────────────────────────────────────────
-              _buildWebPrinterRow(
-                title: 'XP-80C (الفواتير)',
-                icon: Icons.receipt_long_outlined,
-                connected: receiptConnected,
-              ),
-              const SizedBox(height: 16),
-
-              // ── Refresh & Close buttons ────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFD4AF37),
-                      side: const BorderSide(color: Color(0xFFD4AF37)),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    onPressed: () async {
-                      await EscPosPrintService.refreshStatus();
-                      if (mounted) setState(() {});
-                    },
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text(
-                      'تحديث الحالة',
-                      style: TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4AF37),
-                      foregroundColor: const Color(0xFF1A2A3A),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 10,
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('إغلاق', style: TextStyle(fontSize: 14)),
-                  ),
-                ],
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسناً', style: TextStyle(fontSize: 16)),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildWebPrinterRow({
-    required String title,
-    required IconData icon,
-    required bool connected,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2A3A),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: connected
-              ? const Color(0xFF4CAF50).withOpacity(0.5)
-              : Colors.transparent,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFD4AF37), size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: connected
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFF666666),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      connected ? '🖨️ متصلة' : 'غير متصلة',
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 11,
-                        color: connected
-                            ? const Color(0xFF4CAF50)
-                            : const Color(0xFF666666),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
