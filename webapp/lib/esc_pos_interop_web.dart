@@ -32,6 +32,19 @@ external JSPromise _jsAutoReconnect(
   JSNumber? usbProductId,
 );
 
+@JS('__printerSetSavedDeviceIds')
+external void _jsSetSavedDeviceIds(
+  JSString type,
+  JSNumber? usbVendorId,
+  JSNumber? usbProductId,
+);
+
+@JS('__printerGetSavedDeviceIds')
+external String _jsGetSavedDeviceIds();
+
+@JS('__printerScanAllPorts')
+external JSPromise _jsScanAllPorts();
+
 @JS('navigator.serial')
 external JSObject? get _jsSerial;
 
@@ -91,5 +104,29 @@ Future<String> jsPrintAutoReconnect(
     return result.toString();
   } catch (e) {
     return '{"success": false, "error": "$e"}';
+  }
+}
+
+/// Set saved USB vendor/product IDs in the JS bridge for auto-detection.
+void jsPrintSetSavedDeviceIds(
+  String type,
+  int? vendorId,
+  int? productId,
+) {
+  _jsSetSavedDeviceIds(type.toJS, vendorId?.toJS, productId?.toJS);
+}
+
+/// Get all saved device IDs from the JS bridge.
+String jsPrintGetSavedDeviceIds() {
+  return _jsGetSavedDeviceIds();
+}
+
+/// Scan all previously authorized serial ports without showing a dialog.
+Future<String> jsPrintScanAllPorts() async {
+  try {
+    final result = await _jsScanAllPorts().toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"ports": [], "error": "$e"}';
   }
 }

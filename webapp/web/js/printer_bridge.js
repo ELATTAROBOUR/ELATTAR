@@ -5,11 +5,60 @@
  * Supports multiple simultaneous printer connections keyed by type.
  */
 
-// Initialize connections store
+// ─── Global State ──────────────────────────────────────────────────────────
 window.__printerConnections = window.__printerConnections || {};
+window.__printerSavedDevices = window.__printerSavedDevices || {};
+
+// ─── Auto-Detection Initialization ─────────────────────────────────────────
+(function _initPrinterBridge() {
+  if (navigator.serial) {
+    // When a serial device is connected AFTER page load, try to auto-reconnect
+    // to any printer types that match the saved vendor/product IDs.
+    navigator.serial.addEventListener('connect', async (event) => {
+      const port = event.target;
+      const info = port.getInfo();
+      console.log('[PrinterBridge] Serial device connected:', info.usbVendorId, info.usbProductId);
+      await _tryAutoReconnectAll();
+    });
+
+    // When a device is disconnected, clean up any stale connections.
+    navigator.serial.addEventListener('disconnect', (event) => {
+      const port = event.target;
+      console.log('[PrinterBridge] Serial device disconnected');
+      for (const type of Object.keys(window.__printerConnections)) {
+        const conn = window.__printerConnections[type];
+        if (conn && conn.port === port) {
+          console.log('[PrinterBridge] Cleaned up connection for type:', type);
+          delete window.__printerConnections[type];
+        }
+      }
+    });
+  }
+})();
 
 /**
- * Request a serial port from the user and open it.
+ * Try to auto-reconnect all printer types that have saved device IDs.
+ * Called on startup and when a serial device is connected.
+ */
+async function _tryAutoReconnectAll() {
+  const saved = window.__printerSavedDevices || {};
+  for (const type of Object.keys(saved)) {
+    if (window.__printerConnections[type] && window.__printerConnections[type].port) {
+      continue; // Already connected
+    }
+    const { vendorId, productId } = saved[type];
+    if (vendorId != null) {
+      await __printerAutoReconnect(type, vendorId, productId);
+    }
+  }
+}
+
+// ─── Connect (User-Initiated) ──────────────────────────────────────────────
+
+/**
+ * Request a serial port from the user via the browser chooser and open it.
+ * On success, saves the device IDs both in JS (for onconnect) and returns them
+ * to Dart (for persistent storage via DatabaseHelper).
  * @param {string} type - Printer type key ('label' or 'receipt')
  * @param {number|null} usbVendorId - Optional USB vendor ID filter
  * @param {number|null} usbProductId - Optional USB product ID filter
@@ -19,7 +68,6 @@ async function __printerConnect(type, usbVendorId, usbProductId) {
   try {
     const filters = [];
     if (usbVendorId != null) {
-      // Only include usbProductId if it's a valid non-null value
       const filter = { usbVendorId };
       if (usbProductId != null) {
         filter.usbProductId = usbProductId;
@@ -37,9 +85,12 @@ async function __printerConnect(type, usbVendorId, usbProductId) {
       parity: 'none',
       flowControl: 'none',
     });
-    // Store for later use, keyed by type
     const writer = port.writable.getWriter();
     window.__printerConnections[type] = { port, writer };
+
+    // Save in JS for onconnect auto-detection
+    __printerSetSavedDeviceIds(type, info.usbVendorId, info.usbProductId);
+
     return JSON.stringify({
       success: true,
       vendorId: info.usbVendorId,
@@ -72,6 +123,65 @@ async function __printerPrint(type, data) {
     return JSON.stringify({ success: true });
   } catch (e) {
     return JSON.stringify({ success: false, error: e.message || String(e) });
+  }
+}
+
+/**
+ * Save USB vendor/product IDs for a printer type in JS bridge memory.
+ * These are used by the onconnect handler to auto-reconnect when a device
+ * is plugged in after page load.
+ * Called from Dart on startup (after loading from DatabaseHelper)
+ * and automatically after __printerConnect succeeds.
+ * @param {string} type - Printer type key ('label' or 'receipt')
+ * @param {number|null} usbVendorId - USB vendor ID
+ * @param {number|null} usbProductId - USB product ID
+ */
+function __printerSetSavedDeviceIds(type, usbVendorId, usbProductId) {
+  if (usbVendorId == null) {
+    delete window.__printerSavedDevices[type];
+  } else {
+    window.__printerSavedDevices[type] = {
+      vendorId: usbVendorId,
+      productId: usbProductId,
+    };
+  }
+}
+
+/**
+ * Get all saved device IDs as a JSON string.
+ * Used for debugging and verification.
+ * @returns {string} JSON: { label?: {vendorId, productId}, receipt?: ... }
+ */
+function __printerGetSavedDeviceIds() {
+  return JSON.stringify(window.__printerSavedDevices);
+}
+
+/**
+ * Scan all previously authorized serial ports without showing a dialog.
+ * Returns basic info about each port (VID, PID).
+ * @returns {string} JSON: { ports: [{vendorId, productId}], error? }
+ */
+async function __printerScanAllPorts() {
+  try {
+    const ports = await navigator.serial.getPorts();
+    if (!ports || ports.length === 0) {
+      return JSON.stringify({ ports: [] });
+    }
+    const results = [];
+    for (const port of ports) {
+      try {
+        const info = port.getInfo();
+        results.push({
+          vendorId: info.usbVendorId,
+          productId: info.usbProductId,
+        });
+      } catch (_) {
+        // Skip ports that can't be queried
+      }
+    }
+    return JSON.stringify({ ports: results });
+  } catch (e) {
+    return JSON.stringify({ ports: [], error: e.message || String(e) });
   }
 }
 

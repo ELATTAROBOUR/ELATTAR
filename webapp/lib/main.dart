@@ -2968,12 +2968,16 @@ class _MainScreenState extends State<MainScreen> {
       (_) => _updateBadgeCounts(),
     );
 
-    // Try to auto-reconnect to USB printers on startup (silent, no dialog)
-    _autoReconnectPrinters();
+    // Sync saved printer IDs to JS bridge, then auto-reconnect on startup
+    _initPrinters();
   }
 
-  Future<void> _autoReconnectPrinters() async {
+  Future<void> _initPrinters() async {
     if (!kIsWeb) return;
+    // 1. Sync saved printer IDs from DatabaseHelper to the JS bridge.
+    //    This ensures the onconnect handler in JS can auto-detect devices.
+    await EscPosPrintService.setSavedDevicesInJs();
+    // 2. Try to auto-reconnect to previously authorized printers.
     final labelOk = await EscPosPrintService.autoReconnect(
       EscPosPrintService.labelPrinterType,
     );
@@ -6618,11 +6622,21 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'قم بتوصيل الطابعات عبر USB للطباعة التلقائية',
+                'قم بتوصيل الطابعات عبر USB',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 14,
+                  color: Color(0xFFD4AF37),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'تأكد من توصيل الطابعة بالجهاز، ثم اضغط "توصيل" لاختيارها من القائمة',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
                   color: Color(0xFF8899AA),
                 ),
               ),
@@ -6666,25 +6680,76 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                   color: const Color(0xFF1A2A3A),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Color(0xFFD4AF37),
-                      size: 18,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'عند توصيل الطابعات عبر USB، سيتم الطباعة تلقائياً دون الحاجة لاختيار الطابعة في كل مرة.',
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          color: Color(0xFF8899AA),
-                          height: 1.4,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Color(0xFFD4AF37),
+                          size: 18,
                         ),
-                      ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '💡 بعد توصيل الطابعة أول مرة، سيتم إعادة الاتصال تلقائياً في الزيارات القادمة',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Color(0xFF8899AA),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.usb,
+                          color: Color(0xFFD4AF37),
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🔌 إذا لم تظهر الطابعة في القائمة، تأكد من توصيلها بالجهاز ثم اضغط "توصيل" مرة أخرى',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Color(0xFF8899AA),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.refresh,
+                          color: Color(0xFFD4AF37),
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '🔄 عند توصيل طابعة سبق توصيلها، سيتم اكتشافها تلقائياً دون الحاجة لإعادة اختيارها',
+                            style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: Color(0xFF8899AA),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

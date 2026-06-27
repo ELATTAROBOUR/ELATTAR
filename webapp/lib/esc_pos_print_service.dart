@@ -188,6 +188,10 @@ class EscPosPrintService {
   static Future<bool> autoReconnect(String type) async {
     if (!kIsWeb || !isWebSerialAvailable()) return false;
     try {
+      // First, sync saved IDs from persistent storage to the JS bridge.
+      // This ensures the onconnect handler in JS knows which devices to watch for.
+      await setSavedDevicesInJs();
+
       final savedVid = await _getSavedVendorId(type);
       final jsonStr = await jsPrintAutoReconnect(
         type,
@@ -233,6 +237,38 @@ class EscPosPrintService {
       }
     } catch (e) {
       debugPrint('Error saving USB IDs for $type: $e');
+    }
+  }
+
+  /// Sync saved USB vendor/product IDs from persistent storage to the JS bridge.
+  /// This must be called on app startup BEFORE autoReconnect, so that the JS
+  /// onconnect handler knows which devices to watch for.
+  static Future<void> setSavedDevicesInJs() async {
+    if (!kIsWeb || !isWebSerialAvailable()) return;
+    try {
+      for (final type in [labelPrinterType, receiptPrinterType]) {
+        final vid = await _getSavedVendorId(type);
+        final pid = await _getSavedProductId(type);
+        jsPrintSetSavedDeviceIds(type, vid, pid);
+      }
+    } catch (e) {
+      debugPrint('EscPosPrintService.setSavedDevicesInJs error: $e');
+    }
+  }
+
+  /// Scan all previously authorized serial ports (no dialog) and return info.
+  /// Returns a list of {vendorId, productId} for each authorized port.
+  /// Use this to check what devices are available without showing a chooser.
+  static Future<List<Map<String, dynamic>>> scanAllPorts() async {
+    if (!kIsWeb || !isWebSerialAvailable()) return [];
+    try {
+      final jsonStr = await jsPrintScanAllPorts();
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final ports = result['ports'] as List<dynamic>? ?? [];
+      return ports.cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('EscPosPrintService.scanAllPorts error: $e');
+      return [];
     }
   }
 

@@ -35,3 +35,19 @@ Future<String> jsPrintAutoReconnect(
 bool jsCheckWebSerialAvailable() {
   return false;
 }
+
+void jsPrintSetSavedDeviceIds(
+  String type,
+  int? vendorId,
+  int? productId,
+) {
+  // Stub: no-op on native platforms
+}
+
+String jsPrintGetSavedDeviceIds() {
+  return '{}';
+}
+
+Future<String> jsPrintScanAllPorts() async {
+  return '{"ports": []}';
+}
