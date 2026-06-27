@@ -17,6 +17,7 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="العطار استور - نظام متكامل لإدارة محلات صيانة الموبايلات: الفواتير, المخزون, المبيعات, الصيانة, قطع الغيار">
 
@@ -53,6 +54,16 @@
       height: 100%;
       background-color: #060B14;
       overflow: hidden;
+      /* Mobile touch improvements */
+      -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+
+    /* Prevent iOS zoom on input focus */
+    input, select, textarea {
+      font-size: 16px !important;
     }
 
     #elattar-loader {

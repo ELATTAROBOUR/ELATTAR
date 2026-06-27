@@ -3271,6 +3271,8 @@ class _MainScreenState extends State<MainScreen> {
     final isDark = AppTheme.isDark(context);
     final textColor = AppTheme.text(context);
     final primaryGold = AppColors.primary;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 768;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -3281,33 +3283,188 @@ class _MainScreenState extends State<MainScreen> {
         },
         child: Focus(
           autofocus: true,
-          child: Scaffold(
-            backgroundColor: AppTheme.scaffoldBg(context),
-            body: Row(
+          child: isMobile
+              ? _buildMobileLayout(context, isDark, primaryGold)
+              : _buildDesktopLayout(context, isDark, textColor, primaryGold),
+        ),
+      ),
+    );
+  }
+
+  /// Desktop layout: fixed sidebar (280px) + content area
+  Widget _buildDesktopLayout(
+    BuildContext context,
+    bool isDark,
+    Color textColor,
+    Color primaryGold,
+  ) {
+    return Scaffold(
+      backgroundColor: AppTheme.scaffoldBg(context),
+      body: Row(
+        children: [
+          // ═══════════════════════════════════════════════
+          // SIDEBAR — Premium Glass Design
+          // ═══════════════════════════════════════════════
+          Container(
+            width: 280,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: isDark
+                    ? [
+                        const Color(0xFF0D1520),
+                        const Color(0xFF0A1220),
+                        const Color(0xFF080E1A),
+                      ]
+                    : [
+                        const Color(0xFFF0EBE4),
+                        const Color(0xFFE8E2DA),
+                        const Color(0xFFE5DFD7),
+                      ],
+              ),
+              border: Border(
+                left: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+            child: Column(
               children: [
-                // ═══════════════════════════════════════════════
-                // SIDEBAR — Premium Glass Design
-                // ═══════════════════════════════════════════════
+                // ── Branding / Header ──
                 Container(
-                  width: 280,
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: isDark
-                          ? [
-                              const Color(0xFF0D1520),
-                              const Color(0xFF0A1220),
-                              const Color(0xFF080E1A),
-                            ]
-                          : [
-                              const Color(0xFFF0EBE4),
-                              const Color(0xFFE8E2DA),
-                              const Color(0xFFE5DFD7),
-                            ],
+                      colors: [
+                        if (isDark) ...[
+                          AppColors.primary.withValues(alpha: 0.04),
+                          const Color(0xFF0D1520),
+                        ] else ...[
+                          AppColors.primary.withValues(alpha: 0.06),
+                          const Color(0xFFF0EBE4),
+                        ],
+                      ],
                     ),
+                  ),
+                  child: Column(
+                    children: [
+                      // Logo with glow
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          image: DecorationImage(
+                            image: AssetImage(
+                              isDark
+                                  ? 'assets/image/logod.jpg'
+                                  : 'assets/image/logow.jpg',
+                            ),
+                            fit: BoxFit.cover,
+                          ),
+                          boxShadow: isDark ? AppShadows.goldGlow : null,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          colors: [
+                            AppColors.primary,
+                            AppColors.primaryLight,
+                            AppColors.primary,
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
+                        ).createShader(bounds),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Text(
+                              'DESIGNED BY',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontFamily: 'Cairo',
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'BELALZAGHL0L',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontFamily: 'Cairo',
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Search bar
+                      _SidebarSearchBar(onTap: _showSmartSearch),
+                      const SizedBox(height: 10),
+
+                      // Branch indicator
+                      _BranchIndicator(
+                        branch: DatabaseHelper.currentBranch,
+                        onTap: () {
+                          final idx = _filteredMenuItems.indexWhere(
+                            (m) => m.title.contains('إدارة الفروع'),
+                          );
+                          if (idx != -1) {
+                            setState(() => _selectedIndex = idx);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Divider
+                Container(
+                  height: 1,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.06),
+                ),
+                const SizedBox(height: 8),
+
+                // ── Menu Items ──
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: _filteredMenuItems.length,
+                    itemBuilder: (context, index) {
+                      final item = _filteredMenuItems[index];
+                      final isSelected = _selectedIndex == index;
+                      return _SidebarMenuItem(
+                        item: item,
+                        isSelected: isSelected,
+                        isDark: isDark,
+                        badgeCount: _badgeCounts[item.title] ?? 0,
+                        onTap: () {
+                          setState(() => _selectedIndex = index);
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // ── Bottom Controls ──
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  decoration: BoxDecoration(
                     border: Border(
-                      left: BorderSide(
+                      top: BorderSide(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
                             : Colors.black.withValues(alpha: 0.06),
@@ -3316,238 +3473,376 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                   child: Column(
                     children: [
-                      // ── Branding / Header ──
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              if (isDark) ...[
-                                AppColors.primary.withValues(alpha: 0.04),
-                                const Color(0xFF0D1520),
-                              ] else ...[
-                                AppColors.primary.withValues(alpha: 0.06),
-                                const Color(0xFFF0EBE4),
-                              ],
-                            ],
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            // Logo with glow
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                image: DecorationImage(
-                                  image: AssetImage(
-                                    isDark
-                                        ? 'assets/image/logod.jpg'
-                                        : 'assets/image/logow.jpg',
-                                  ),
-                                  fit: BoxFit.cover,
-                                ),
-                                boxShadow: isDark ? AppShadows.goldGlow : null,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            ShaderMask(
-                              shaderCallback: (bounds) => LinearGradient(
-                                colors: [
-                                  AppColors.primary,
-                                  AppColors.primaryLight,
-                                  AppColors.primary,
-                                ],
-                                stops: const [0.0, 0.5, 1.0],
-                              ).createShader(bounds),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Text(
-                                    'DESIGNED BY',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      fontFamily: 'Cairo',
-                                      letterSpacing: 1.5,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'BELALZAGHL0L',
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      fontFamily: 'Cairo',
-                                      letterSpacing: 1.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-
-                            // Search bar
-                            _SidebarSearchBar(onTap: _showSmartSearch),
-                            const SizedBox(height: 10),
-
-                            // Branch indicator
-                            _BranchIndicator(
-                              branch: DatabaseHelper.currentBranch,
-                              onTap: () {
-                                final idx = _filteredMenuItems.indexWhere(
-                                  (m) => m.title.contains('إدارة الفروع'),
-                                );
-                                if (idx != -1) {
-                                  setState(() => _selectedIndex = idx);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
+                      _SidebarBottomTile(
+                        icon: isDark
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
+                        iconColor: primaryGold,
+                        label: isDark ? 'الوضع المضيء' : 'الوضع الداكن',
+                        isDark: isDark,
+                        onTap: _toggleTheme,
                       ),
-
-                      // Divider
-                      Container(
-                        height: 1,
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.06),
+                      const SizedBox(height: 2),
+                      _SidebarBottomTile(
+                        icon: Icons.chat_rounded,
+                        iconColor: const Color(0xFF25D366),
+                        label: 'واتساب API',
+                        isDark: isDark,
+                        onTap: _showWhatsAppSettings,
                       ),
-                      const SizedBox(height: 8),
-
-                      // ── Menu Items ──
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          itemCount: _filteredMenuItems.length,
-                          itemBuilder: (context, index) {
-                            final item = _filteredMenuItems[index];
-                            final isSelected = _selectedIndex == index;
-                            return _SidebarMenuItem(
-                              item: item,
-                              isSelected: isSelected,
-                              isDark: isDark,
-                              badgeCount: _badgeCounts[item.title] ?? 0,
-                              onTap: () {
-                                setState(() => _selectedIndex = index);
-                              },
-                            );
-                          },
-                        ),
+                      const SizedBox(height: 2),
+                      _SidebarBottomTile(
+                        icon: Icons.print_rounded,
+                        iconColor: null,
+                        label: 'إعدادات الطابعة',
+                        isDark: isDark,
+                        onTap: _showPrinterSettings,
                       ),
-
-                      // ── Bottom Controls ──
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.06)
-                                  : Colors.black.withValues(alpha: 0.06),
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            _SidebarBottomTile(
-                              icon: isDark
-                                  ? Icons.light_mode_rounded
-                                  : Icons.dark_mode_rounded,
-                              iconColor: primaryGold,
-                              label: isDark ? 'الوضع المضيء' : 'الوضع الداكن',
-                              isDark: isDark,
-                              onTap: _toggleTheme,
-                            ),
-                            const SizedBox(height: 2),
-                            _SidebarBottomTile(
-                              icon: Icons.chat_rounded,
-                              iconColor: const Color(0xFF25D366),
-                              label: 'واتساب API',
-                              isDark: isDark,
-                              onTap: _showWhatsAppSettings,
-                            ),
-                            const SizedBox(height: 2),
-                            _SidebarBottomTile(
-                              icon: Icons.print_rounded,
-                              iconColor: null, // use default
-                              label: 'إعدادات الطابعة',
-                              isDark: isDark,
-                              onTap: _showPrinterSettings,
-                            ),
-                            const SizedBox(height: 2),
-                            _SidebarBottomTile(
-                              icon: Icons.logout_rounded,
-                              iconColor: AppColors.error,
-                              label: 'تسجيل الخروج',
-                              isDark: isDark,
-                              labelColor: AppColors.error,
-                              onTap: () => widget.onLogout?.call(),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 2),
+                      _SidebarBottomTile(
+                        icon: Icons.logout_rounded,
+                        iconColor: AppColors.error,
+                        label: 'تسجيل الخروج',
+                        isDark: isDark,
+                        labelColor: AppColors.error,
+                        onTap: () => widget.onLogout?.call(),
                       ),
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
 
-                // ═══════════════════════════════════════════════
-                // MAIN VIEW AREA
-                // ═══════════════════════════════════════════════
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: isDark
-                          ? AppColors.surfaceDarkGradient
-                          : LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                AppColors.scaffoldLight,
-                                AppColors.surfaceLight,
-                              ],
-                            ),
-                    ),
-                    child: ScrollConfiguration(
-                      behavior: _AppScrollBehavior(),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 350),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder:
-                            (Widget child, Animation<double> animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position:
-                                      Tween<Offset>(
-                                        begin: const Offset(0.06, 0),
-                                        end: Offset.zero,
-                                      ).animate(
-                                        CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeOutCubic,
-                                        ),
-                                      ),
-                                  child: child,
+          // ═══════════════════════════════════════════════
+          // MAIN VIEW AREA
+          // ═══════════════════════════════════════════════
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: isDark
+                    ? AppColors.surfaceDarkGradient
+                    : LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.scaffoldLight,
+                          AppColors.surfaceLight,
+                        ],
+                      ),
+              ),
+              child: ScrollConfiguration(
+                behavior: _AppScrollBehavior(),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(0.06, 0),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
                                 ),
-                              );
-                            },
-                        child: KeyedSubtree(
-                          key: ValueKey<int>(_selectedIndex),
-                          child: _filteredMenuItems[_selectedIndex].view,
+                            child: child,
+                          ),
+                        );
+                      },
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(_selectedIndex),
+                    child: _filteredMenuItems[_selectedIndex].view,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Mobile layout: Scaffold with AppBar + Drawer + full-width content
+  Widget _buildMobileLayout(
+    BuildContext context,
+    bool isDark,
+    Color primaryGold,
+  ) {
+    return Scaffold(
+      backgroundColor: AppTheme.scaffoldBg(context),
+      appBar: AppBar(
+        backgroundColor: isDark
+            ? const Color(0xFF0D1520)
+            : const Color(0xFFF0EBE4),
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            iconSize: 28,
+            color: primaryGold,
+            onPressed: () => Scaffold.of(context).openDrawer(),
+            tooltip: 'القائمة',
+          ),
+        ),
+        title: ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [primaryGold, AppColors.primaryLight, primaryGold],
+            stops: const [0.0, 0.5, 1.0],
+          ).createShader(bounds),
+          child: const Text(
+            'ELATTAR',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontFamily: 'Cairo',
+              letterSpacing: 1.5,
+            ),
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(
+              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              color: primaryGold,
+            ),
+            onPressed: _toggleTheme,
+            tooltip: isDark ? 'الوضع المضيء' : 'الوضع الداكن',
+          ),
+          IconButton(
+            icon: const Icon(Icons.search_rounded, color: Color(0xFFD4AF37)),
+            onPressed: _showSmartSearch,
+            tooltip: 'بحث',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFFD4AF37)),
+            color: isDark ? const Color(0xFF111C2E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            onSelected: (value) {
+              switch (value) {
+                case 'print':
+                  _showPrinterSettings();
+                  break;
+                case 'whatsapp':
+                  _showWhatsAppSettings();
+                  break;
+                case 'logout':
+                  widget.onLogout?.call();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'print',
+                child: ListTile(
+                  leading: Icon(Icons.print_rounded, color: Color(0xFFD4AF37)),
+                  title: Text(
+                    'إعدادات الطابعة',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  dense: true,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'whatsapp',
+                child: ListTile(
+                  leading: Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
+                  title: Text(
+                    'واتساب API',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  dense: true,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout_rounded, color: Color(0xFFEF4444)),
+                  title: Text(
+                    'تسجيل الخروج',
+                    style: TextStyle(fontFamily: 'Cairo'),
+                  ),
+                  dense: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      endDrawer: Drawer(
+        backgroundColor: isDark
+            ? const Color(0xFF0A1220)
+            : const Color(0xFFF0EBE4),
+        width: 300,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── Mobile Drawer Header ──
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      if (isDark) ...[
+                        AppColors.primary.withValues(alpha: 0.04),
+                        const Color(0xFF0D1520),
+                      ] else ...[
+                        AppColors.primary.withValues(alpha: 0.06),
+                        const Color(0xFFF0EBE4),
+                      ],
+                    ],
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Logo
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        image: DecorationImage(
+                          image: AssetImage(
+                            isDark
+                                ? 'assets/image/logod.jpg'
+                                : 'assets/image/logow.jpg',
+                          ),
+                          fit: BoxFit.cover,
                         ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'العطار استور',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                        fontFamily: 'Cairo',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'BELALZAGHL0L',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.primary,
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Search bar in drawer
+                    _SidebarSearchBar(
+                      onTap: () {
+                        Navigator.pop(context); // Close drawer
+                        _showSmartSearch();
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    // Branch indicator
+                    _BranchIndicator(
+                      branch: DatabaseHelper.currentBranch,
+                      onTap: () {
+                        Navigator.pop(context);
+                        final idx = _filteredMenuItems.indexWhere(
+                          (m) => m.title.contains('إدارة الفروع'),
+                        );
+                        if (idx != -1) {
+                          setState(() => _selectedIndex = idx);
+                        }
+                      },
+                    ),
+                  ],
                 ),
-              ],
+              ),
+
+              // Divider
+              Container(
+                height: 1,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+              const SizedBox(height: 4),
+
+              // ── Menu Items ──
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  itemCount: _filteredMenuItems.length,
+                  itemBuilder: (context, index) {
+                    final item = _filteredMenuItems[index];
+                    final isSelected = _selectedIndex == index;
+                    return _SidebarMenuItem(
+                      item: item,
+                      isSelected: isSelected,
+                      isDark: isDark,
+                      badgeCount: _badgeCounts[item.title] ?? 0,
+                      onTap: () {
+                        setState(() => _selectedIndex = index);
+                        Navigator.pop(context); // Close drawer
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.surfaceDarkGradient
+                : LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.scaffoldLight, AppColors.surfaceLight],
+                  ),
+          ),
+          child: ScrollConfiguration(
+            behavior: _AppScrollBehavior(),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(0.06, 0),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ),
+                        ),
+                    child: child,
+                  ),
+                );
+              },
+              child: KeyedSubtree(
+                key: ValueKey<int>(_selectedIndex),
+                child: _filteredMenuItems[_selectedIndex].view,
+              ),
             ),
           ),
         ),
@@ -6266,12 +6561,10 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 connected: EscPosPrintService.isConnected(
                   EscPosPrintService.labelPrinterType,
                 ),
-                onConnect: () => _connectUsbPrinter(
-                  EscPosPrintService.labelPrinterType,
-                ),
-                onDisconnect: () => _disconnectUsbPrinter(
-                  EscPosPrintService.labelPrinterType,
-                ),
+                onConnect: () =>
+                    _connectUsbPrinter(EscPosPrintService.labelPrinterType),
+                onDisconnect: () =>
+                    _disconnectUsbPrinter(EscPosPrintService.labelPrinterType),
               ),
               const SizedBox(height: 12),
 
@@ -6283,9 +6576,8 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 connected: EscPosPrintService.isConnected(
                   EscPosPrintService.receiptPrinterType,
                 ),
-                onConnect: () => _connectUsbPrinter(
-                  EscPosPrintService.receiptPrinterType,
-                ),
+                onConnect: () =>
+                    _connectUsbPrinter(EscPosPrintService.receiptPrinterType),
                 onDisconnect: () => _disconnectUsbPrinter(
                   EscPosPrintService.receiptPrinterType,
                 ),
@@ -6302,7 +6594,11 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
                 child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, color: Color(0xFFD4AF37), size: 18),
+                    Icon(
+                      Icons.info_outline,
+                      color: Color(0xFFD4AF37),
+                      size: 18,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -6445,9 +6741,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? '✅ تم توصيل الطابعة بنجاح'
-                  : '❌ فشل توصيل الطابعة',
+              success ? '✅ تم توصيل الطابعة بنجاح' : '❌ فشل توصيل الطابعة',
             ),
             backgroundColor: success ? Colors.green : Colors.red,
             duration: const Duration(seconds: 2),
@@ -6457,10 +6751,7 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ خطأ: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
         );
       }
     }

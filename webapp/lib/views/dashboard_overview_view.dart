@@ -260,31 +260,38 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
             const SizedBox(height: 24),
 
             // ── Premium Stat Cards ──
-            GridView.count(
-              crossAxisCount: 4,
-              shrinkWrap: true,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.5,
-              children: [
-                GradientStatCard.info(
-                  title: 'أجهزة قيد الصيانة',
-                  value: _activeRepairs.toString(),
-                ),
-                GradientStatCard.warning(
-                  title: 'إجمالي الإكسسوارات',
-                  value: _accessoriesCount.toString(),
-                ),
-                GradientStatCard.accent(
-                  title: 'الأجهزة بالمخزن',
-                  value: _devicesCount.toString(),
-                ),
-                GradientStatCard.sales(
-                  title: 'ديون العملاء (آجل)',
-                  value: '${_customerDebts.toStringAsFixed(0)} ج.م',
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final crossAxisCount = constraints.maxWidth > 500
+                    ? 4
+                    : (constraints.maxWidth > 300 ? 2 : 1);
+                return GridView.count(
+                  crossAxisCount: crossAxisCount,
+                  shrinkWrap: true,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 1.5,
+                  children: [
+                    GradientStatCard.info(
+                      title: 'أجهزة قيد الصيانة',
+                      value: _activeRepairs.toString(),
+                    ),
+                    GradientStatCard.warning(
+                      title: 'إجمالي الإكسسوارات',
+                      value: _accessoriesCount.toString(),
+                    ),
+                    GradientStatCard.accent(
+                      title: 'الأجهزة بالمخزن',
+                      value: _devicesCount.toString(),
+                    ),
+                    GradientStatCard.sales(
+                      title: 'ديون العملاء (آجل)',
+                      value: '${_customerDebts.toStringAsFixed(0)} ج.م',
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 32),
 
@@ -306,75 +313,107 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
               ],
             ),
             const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 4,
-              shrinkWrap: true,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 2.2,
-              children: [
-                QuickActionCard(
-                  title: 'عملية بيع جديدة',
-                  subtitle: 'بيع إكسسوار، جهاز، أو قطعة غيار',
-                  icon: Icons.point_of_sale_rounded,
-                  color: AppColors.success,
-                  onTap: () {
-                    if (widget.onNavigate != null) widget.onNavigate!(2);
-                  },
-                ),
-                QuickActionCard(
-                  title: 'الصيانة والتذاكر',
-                  subtitle: 'تسجيل واستلام أجهزة صيانة',
-                  icon: Icons.build_circle_rounded,
-                  color: AppColors.info,
-                  onTap: () {
-                    if (widget.onNavigate != null) widget.onNavigate!(3);
-                  },
-                ),
-                QuickActionCard(
-                  title: 'جرد ومراقبة المخزن',
-                  subtitle: 'متابعة الكميات وحالة المخزون',
-                  icon: Icons.inventory_rounded,
-                  color: AppColors.warning,
-                  onTap: () {
-                    if (widget.onNavigate != null) widget.onNavigate!(8);
-                  },
-                ),
-                QuickActionCard(
-                  title: 'استلام بضائع جديدة',
-                  subtitle: 'إدخال فواتير الموردين للمخزن',
-                  icon: Icons.playlist_add_check_rounded,
-                  color: AppColors.purple,
-                  onTap: () {
-                    if (widget.onNavigate != null) widget.onNavigate!(9);
-                  },
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final crossAxisCount = constraints.maxWidth > 500
+                    ? 4
+                    : (constraints.maxWidth > 300 ? 2 : 1);
+                return GridView.count(
+                  crossAxisCount: crossAxisCount,
+                  shrinkWrap: true,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 2.2,
+                  children: [
+                    QuickActionCard(
+                      title: 'عملية بيع جديدة',
+                      subtitle: 'بيع إكسسوار، جهاز، أو قطعة غيار',
+                      icon: Icons.point_of_sale_rounded,
+                      color: AppColors.success,
+                      onTap: () {
+                        if (widget.onNavigate != null) widget.onNavigate!(2);
+                      },
+                    ),
+                    QuickActionCard(
+                      title: 'الصيانة والتذاكر',
+                      subtitle: 'تسجيل واستلام أجهزة صيانة',
+                      icon: Icons.build_circle_rounded,
+                      color: AppColors.info,
+                      onTap: () {
+                        if (widget.onNavigate != null) widget.onNavigate!(3);
+                      },
+                    ),
+                    QuickActionCard(
+                      title: 'جرد ومراقبة المخزن',
+                      subtitle: 'متابعة الكميات وحالة المخزون',
+                      icon: Icons.inventory_rounded,
+                      color: AppColors.warning,
+                      onTap: () {
+                        if (widget.onNavigate != null) widget.onNavigate!(8);
+                      },
+                    ),
+                    QuickActionCard(
+                      title: 'استلام بضائع جديدة',
+                      subtitle: 'إدخال فواتير الموردين للمخزن',
+                      icon: Icons.playlist_add_check_rounded,
+                      color: AppColors.purple,
+                      onTap: () {
+                        if (widget.onNavigate != null) widget.onNavigate!(9);
+                      },
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 32),
 
             // ── Charts Section ──
-            SizedBox(
-              height: 360,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 7,
-                    child: SalesBarChart(
-                      dailySales: _dailySales,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 500;
+                if (isWide) {
+                  return SizedBox(
+                    height: 360,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 7,
+                          child: SalesBarChart(
+                            dailySales: _dailySales,
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Expanded(
+                          flex: 5,
+                          child: RepairStatusPieChart(
+                            statusCounts: _repairStatusCounts,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    flex: 5,
-                    child: RepairStatusPieChart(
-                      statusCounts: _repairStatusCounts,
-                    ),
-                  ),
-                ],
-              ),
+                  );
+                } else {
+                  return Column(
+                    children: [
+                      SizedBox(
+                        height: 280,
+                        child: SalesBarChart(
+                          dailySales: _dailySales,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 280,
+                        child: RepairStatusPieChart(
+                          statusCounts: _repairStatusCounts,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              },
             ),
             const SizedBox(height: 32),
 
