@@ -10,7 +10,11 @@ import 'dart:typed_data';
 // ─── JS Function Bindings ───────────────────────────────────────────────────
 
 @JS('__printerConnect')
-external JSPromise _jsConnect(JSString type, JSNumber? usbVendorId, JSNumber? usbProductId);
+external JSPromise _jsConnect(
+  JSString type,
+  JSNumber? usbVendorId,
+  JSNumber? usbProductId,
+);
 
 @JS('__printerPrint')
 external JSPromise _jsPrint(JSString type, JSArray<JSNumber> data);
@@ -20,6 +24,9 @@ external JSPromise _jsDisconnect(JSString type);
 
 @JS('__printerIsConnected')
 external String _jsIsConnected(JSString type);
+
+@JS('__printerAutoReconnect')
+external JSPromise _jsAutoReconnect(JSString type);
 
 @JS('navigator.serial')
 external JSObject? get _jsSerial;
@@ -32,7 +39,11 @@ bool jsCheckWebSerialAvailable() {
 }
 
 /// Request a serial port from user and connect for a specific printer type.
-Future<String> jsPrintConnect(String type, int? vendorId, int? productId) async {
+Future<String> jsPrintConnect(
+  String type,
+  int? vendorId,
+  int? productId,
+) async {
   final result = await _jsConnect(
     type.toJS,
     vendorId?.toJS,
@@ -58,4 +69,14 @@ Future<String> jsPrintDisconnect(String type) async {
 /// Check if a specific printer type is connected (sync).
 String jsPrintIsConnected(String type) {
   return _jsIsConnected(type.toJS);
+}
+
+/// Auto-reconnect to previously authorized USB printers without showing a dialog.
+Future<String> jsPrintAutoReconnect(String type) async {
+  try {
+    final result = await _jsAutoReconnect(type.toJS).toDart;
+    return result.toString();
+  } catch (e) {
+    return '{"success": false, "error": "$e"}';
+  }
 }

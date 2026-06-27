@@ -174,6 +174,20 @@ class EscPosPrintService {
     }
   }
 
+  /// Try to auto-reconnect to previously authorized printers without showing a dialog.
+  /// Call this on app startup to restore printer connections from a previous session.
+  static Future<bool> autoReconnect(String type) async {
+    if (!kIsWeb || !isWebSerialAvailable()) return false;
+    try {
+      final jsonStr = await jsPrintAutoReconnect(type);
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+      return result['success'] == true;
+    } catch (e) {
+      debugPrint('EscPosPrintService.autoReconnect($type) error: $e');
+      return false;
+    }
+  }
+
   /// Check if a specific printer type is currently connected
   static bool isConnected(String type) {
     if (!kIsWeb) return false;

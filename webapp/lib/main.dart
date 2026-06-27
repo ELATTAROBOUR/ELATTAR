@@ -950,39 +950,85 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
         debugPrint("Error auto-registering pending client: $e");
       }
 
-      final email = await DatabaseHelper.getClientEmail();
-      final passHash = await DatabaseHelper.getClientPasswordHash();
+      String? effectiveEmail = await DatabaseHelper.getClientEmail();
+      String? effectiveHash = await DatabaseHelper.getClientPasswordHash();
       final users = await DatabaseHelper.loadUsers();
       final hasManager = users.any((u) => u.role == 'manager');
 
-      if ((email == null ||
-              email.isEmpty ||
-              passHash == null ||
-              passHash.isEmpty) &&
+      if ((effectiveEmail == null ||
+              effectiveEmail.isEmpty ||
+              effectiveHash == null ||
+              effectiveHash.isEmpty) &&
           !hasManager) {
         setState(() {
           _pageState = LicensePageState.notRegistered;
         });
-      } else {
-        // If settings are missing but a manager user exists, restore the settings from the manager user
-        if ((email == null ||
-                email.isEmpty ||
-                passHash == null ||
-                passHash.isEmpty) &&
-            hasManager) {
-          try {
-            final manager = users.firstWhere((u) => u.role == 'manager');
-            await DatabaseHelper.saveClientCredentials(
-              email: manager.email,
-              passwordHash: manager.passwordHash,
-              name: manager.name ?? "Manager",
-            );
-          } catch (_) {}
-        }
-        setState(() {
-          _pageState = LicensePageState.login;
-        });
+        return;
       }
+
+      // If settings are missing but a manager user exists, restore the settings from the manager user
+      if ((effectiveEmail == null ||
+              effectiveEmail.isEmpty ||
+              effectiveHash == null ||
+              effectiveHash.isEmpty) &&
+          hasManager) {
+        try {
+          final manager = users.firstWhere((u) => u.role == 'manager');
+          await DatabaseHelper.saveClientCredentials(
+            email: manager.email,
+            passwordHash: manager.passwordHash,
+            name: manager.name ?? "Manager",
+          );
+          effectiveEmail = manager.email;
+          effectiveHash = manager.passwordHash;
+        } catch (_) {}
+      }
+
+      // Auto-login: only if session was active before (user didn't explicitly log out)
+      final sessionActive = await DatabaseHelper.getSetting('sessionActive');
+      if (sessionActive == 'true' &&
+          effectiveEmail != null &&
+          effectiveEmail.isNotEmpty &&
+          effectiveHash != null &&
+          effectiveHash.isNotEmpty) {
+        // Try to find user by email in the users table
+        AppUser? user = await DatabaseHelper.getUserByEmail(effectiveEmail);
+        if (user != null && user.passwordHash == effectiveHash) {
+          // Found matching user → auto-authenticate
+          currentLoggedInUser = user;
+          DatabaseHelper.currentLoggedInUser = user;
+          try {
+            await DatabaseHelper.saveSetting('sessionActive', 'true');
+          } catch (_) {}
+          setState(() {
+            _pageState = LicensePageState.authenticated;
+          });
+          return;
+        }
+
+        // Fallback: user might not be in users table yet (legacy migration).
+        // If we have valid credentials in settings, create the user automatically.
+        final newMgr = AppUser(
+          email: effectiveEmail,
+          passwordHash: effectiveHash,
+          role: 'manager',
+        );
+        await DatabaseHelper.saveUser(newMgr);
+        currentLoggedInUser = newMgr;
+        DatabaseHelper.currentLoggedInUser = newMgr;
+        try {
+          await DatabaseHelper.saveSetting('sessionActive', 'true');
+        } catch (_) {}
+        setState(() {
+          _pageState = LicensePageState.authenticated;
+        });
+        return;
+      }
+
+      // If auto-login failed, show login screen
+      setState(() {
+        _pageState = LicensePageState.login;
+      });
     } else {
       setState(() {
         _pageState = LicensePageState.notActivated;
@@ -1718,6 +1764,10 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
       currentLoggedInUser = newUser;
       DatabaseHelper.currentLoggedInUser = newUser;
 
+      try {
+        await DatabaseHelper.saveSetting('sessionActive', 'true');
+      } catch (_) {}
+
       setState(() {
         _registering = false;
         _pageState = LicensePageState.authenticated;
@@ -1838,6 +1888,9 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     }
 
     if (isLoginValid) {
+      try {
+        await DatabaseHelper.saveSetting('sessionActive', 'true');
+      } catch (_) {}
       setState(() {
         _loggingIn = false;
         _pageState = LicensePageState.authenticated;
@@ -1880,6 +1933,11 @@ class _LicenseGatePageState extends State<LicenseGatePage> {
     if (_pageState == LicensePageState.authenticated) {
       return MainScreen(
         onLogout: () {
+          try {
+            DatabaseHelper.saveSetting('sessionActive', 'false');
+          } catch (_) {}
+          currentLoggedInUser = null;
+          DatabaseHelper.currentLoggedInUser = null;
           setState(() {
             _pageState = LicensePageState.login;
             _loginPasswordController.clear();
@@ -2909,6 +2967,24 @@ class _MainScreenState extends State<MainScreen> {
       const Duration(seconds: 60),
       (_) => _updateBadgeCounts(),
     );
+
+    // Try to auto-reconnect to USB printers on startup (silent, no dialog)
+    _autoReconnectPrinters();
+  }
+
+  Future<void> _autoReconnectPrinters() async {
+    if (!kIsWeb) return;
+    final labelOk = await EscPosPrintService.autoReconnect(
+      EscPosPrintService.labelPrinterType,
+    );
+    final receiptOk = await EscPosPrintService.autoReconnect(
+      EscPosPrintService.receiptPrinterType,
+    );
+    if (labelOk || receiptOk) {
+      debugPrint(
+        'Printer auto-reconnect: label=$labelOk receipt=$receiptOk',
+      );
+    }
   }
 
   Timer? _syncTimer;
@@ -3611,76 +3687,13 @@ class _MainScreenState extends State<MainScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(
-              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: primaryGold,
-            ),
-            onPressed: _toggleTheme,
-            tooltip: isDark ? 'الوضع المضيء' : 'الوضع الداكن',
-          ),
-          IconButton(
             icon: const Icon(Icons.search_rounded, color: Color(0xFFD4AF37)),
             onPressed: _showSmartSearch,
             tooltip: 'بحث',
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFFD4AF37)),
-            color: isDark ? const Color(0xFF111C2E) : Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            onSelected: (value) {
-              switch (value) {
-                case 'print':
-                  _showPrinterSettings();
-                  break;
-                case 'whatsapp':
-                  _showWhatsAppSettings();
-                  break;
-                case 'logout':
-                  widget.onLogout?.call();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'print',
-                child: ListTile(
-                  leading: Icon(Icons.print_rounded, color: Color(0xFFD4AF37)),
-                  title: Text(
-                    'إعدادات الطابعة',
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                  dense: true,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'whatsapp',
-                child: ListTile(
-                  leading: Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
-                  title: Text(
-                    'واتساب API',
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                  dense: true,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: ListTile(
-                  leading: Icon(Icons.logout_rounded, color: Color(0xFFEF4444)),
-                  title: Text(
-                    'تسجيل الخروج',
-                    style: TextStyle(fontFamily: 'Cairo'),
-                  ),
-                  dense: true,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
-      endDrawer: Drawer(
+      drawer: Drawer(
         backgroundColor: isDark
             ? const Color(0xFF0A1220)
             : const Color(0xFFF0EBE4),
@@ -3798,6 +3811,70 @@ class _MainScreenState extends State<MainScreen> {
                       },
                     );
                   },
+                ),
+              ),
+
+              // ── Bottom Controls ──
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.06),
+                    ),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    _SidebarBottomTile(
+                      icon: isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      iconColor: primaryGold,
+                      label: isDark ? 'الوضع المضيء' : 'الوضع الداكن',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _toggleTheme();
+                      },
+                    ),
+                    const SizedBox(height: 2),
+                    _SidebarBottomTile(
+                      icon: Icons.chat_rounded,
+                      iconColor: const Color(0xFF25D366),
+                      label: 'واتساب API',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showWhatsAppSettings();
+                      },
+                    ),
+                    const SizedBox(height: 2),
+                    _SidebarBottomTile(
+                      icon: Icons.print_rounded,
+                      iconColor: null,
+                      label: 'إعدادات الطابعة',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showPrinterSettings();
+                      },
+                    ),
+                    const SizedBox(height: 2),
+                    _SidebarBottomTile(
+                      icon: Icons.logout_rounded,
+                      iconColor: AppColors.error,
+                      label: 'تسجيل الخروج',
+                      isDark: isDark,
+                      labelColor: AppColors.error,
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onLogout?.call();
+                      },
+                    ),
+                  ],
                 ),
               ),
             ],

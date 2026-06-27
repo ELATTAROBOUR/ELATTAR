@@ -4,7 +4,11 @@
 
 import 'dart:typed_data';
 
-Future<String> jsPrintConnect(String type, int? vendorId, int? productId) async {
+Future<String> jsPrintConnect(
+  String type,
+  int? vendorId,
+  int? productId,
+) async {
   throw UnsupportedError('Web Serial API requires web platform');
 }
 
@@ -18,6 +22,10 @@ Future<String> jsPrintDisconnect(String type) async {
 
 String jsPrintIsConnected(String type) {
   return '{"connected":false}';
+}
+
+Future<String> jsPrintAutoReconnect(String type) async {
+  return '{"success": false}';
 }
 
 bool jsCheckWebSerialAvailable() {

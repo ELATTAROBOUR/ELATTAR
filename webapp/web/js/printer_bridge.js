@@ -107,3 +107,59 @@ function __printerIsConnected(type) {
   }
   return JSON.stringify({ connected: false });
 }
+
+/**
+ * Auto-reconnect to previously authorized USB printers without showing a browser dialog.
+ * Iterates through all ports the user has previously granted access to,
+ * opens them and stores them keyed by type.
+ * @param {string} type - Printer type key to store the first found port under
+ * @returns {string} JSON: { success, count }
+ */
+async function __printerAutoReconnect(type) {
+  try {
+    // Check if already connected for this type
+    if (window.__printerConnections[type] && window.__printerConnections[type].port) {
+      return JSON.stringify({ success: true, count: 1 });
+    }
+
+    const ports = await navigator.serial.getPorts();
+    if (!ports || ports.length === 0) {
+      return JSON.stringify({ success: false, count: 0 });
+    }
+
+    // Try to open the first available port and store it under the given type
+    const port = ports[0];
+    await port.open({
+      baudRate: 9600,
+      dataBits: 8,
+      stopBits: 1,
+      parity: 'none',
+      flowControl: 'none',
+    });
+    const writer = port.writable.getWriter();
+    window.__printerConnections[type] = { port, writer };
+
+    // If there's a second port, also try to open it for the opposite type
+    if (ports.length > 1) {
+      const oppositeType = type === 'label' ? 'receipt' : 'label';
+      if (!window.__printerConnections[oppositeType]) {
+        try {
+          const port2 = ports[1];
+          await port2.open({
+            baudRate: 9600,
+            dataBits: 8,
+            stopBits: 1,
+            parity: 'none',
+            flowControl: 'none',
+          });
+          const writer2 = port2.writable.getWriter();
+          window.__printerConnections[oppositeType] = { port: port2, writer: writer2 };
+        } catch (_) {}
+      }
+    }
+
+    return JSON.stringify({ success: true, count: ports.length });
+  } catch (e) {
+    return JSON.stringify({ success: false, count: 0, error: e.message || String(e) });
+  }
+}

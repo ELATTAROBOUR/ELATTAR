@@ -549,23 +549,20 @@ class PrintService {
       );
 
       if (kIsWeb) {
-        // On web: try direct USB ESC/POS first, fall back to browser dialog
-        if (EscPosPrintService.isConnected(EscPosPrintService.labelPrinterType)) {
+        // On web: print directly via USB ESC/POS (silent, no browser dialog)
+        if (EscPosPrintService.isConnected(
+          EscPosPrintService.labelPrinterType,
+        )) {
           final success = await EscPosPrintService.printLabel(ticket);
           if (success) {
             debugPrint('Label print completed via USB ESC/POS');
             return;
           }
-          debugPrint(
-            'USB ESC/POS label failed, falling back to browser dialog',
-          );
+          debugPrint('USB ESC/POS label print failed');
         }
-        await Printing.layoutPdf(
-          onLayout: (_) async => bytes,
-          format: pageFormat,
-          name: 'ملصق-${ticket.id}',
-        );
-        debugPrint('Label print completed via browser dialog');
+        // Printer not connected — print silently fails (no browser dialog)
+        debugPrint('Label printer not connected, skipping print');
+        return;
       } else {
         final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
@@ -626,8 +623,10 @@ class PrintService {
       );
 
       if (kIsWeb) {
-        // On web: try direct USB ESC/POS first, fall back to browser dialog
-        if (EscPosPrintService.isConnected(EscPosPrintService.receiptPrinterType)) {
+        // On web: print directly via USB ESC/POS (silent, no browser dialog)
+        if (EscPosPrintService.isConnected(
+          EscPosPrintService.receiptPrinterType,
+        )) {
           final success = await EscPosPrintService.printReceipt(
             ticket,
             copies: copies,
@@ -636,14 +635,11 @@ class PrintService {
             debugPrint('Receipt print completed via USB ESC/POS');
             return;
           }
-          debugPrint('USB ESC/POS receipt failed, falling back to browser dialog');
+          debugPrint('USB ESC/POS receipt print failed');
         }
-        await Printing.layoutPdf(
-          onLayout: (_) async => bytes,
-          format: pageFormat,
-          name: 'إيصال-${ticket.id}',
-        );
-        debugPrint('Receipt print completed via browser dialog');
+        // Printer not connected — print silently fails (no browser dialog)
+        debugPrint('Receipt printer not connected, skipping print');
+        return;
       } else {
         final config = await PrinterSettingsService.load();
         final printer = await PrinterSettingsService.resolve(
