@@ -534,19 +534,10 @@ class PrintService {
   // ───────────────────────────────────────────────────────────────────────────
 
   /// Print a small customer label to the configured label printer.
+  /// On web, uses the browser print dialog via [Printing.formatPdf].
   static Future<void> printLabel(Ticket ticket) async {
     debugPrint('Auto Label Print Started');
     try {
-      final config = await PrinterSettingsService.load();
-      final printer = await PrinterSettingsService.resolve(
-        config.labelPrinterName,
-        'طابعة الملصقات',
-      );
-
-      debugPrint('Selected Printer: ${printer.name}');
-      debugPrint('Document Type: label');
-      debugPrint('Ticket ID: ${ticket.id}');
-
       final bytes = await generateLabelPdf(ticket);
 
       const pageFormat = PdfPageFormat(
@@ -555,15 +546,37 @@ class PrintService {
         marginAll: 1 * PdfPageFormat.mm,
       );
 
-      final result = await Printing.directPrintPdf(
-        printer: printer,
-        onLayout: (_) async => bytes,
-        format: pageFormat,
-      );
+      if (kIsWeb) {
+        // On web: use browser print dialog
+        await Printing.layoutPdf(
+          onLayout: (_) async => bytes,
+          format: pageFormat,
+          name: 'ملصق-${ticket.id}',
+        );
+        debugPrint('Label print completed via browser dialog');
+      } else {
+        final config = await PrinterSettingsService.load();
+        final printer = await PrinterSettingsService.resolve(
+          config.labelPrinterName,
+          'طابعة الملصقات',
+        );
 
-      debugPrint('Label print result: ${result ? "success" : "failed"}');
-      if (!result) {
-        throw Exception('فشلت عملية طباعة الملصق على الطابعة ${printer.name}');
+        debugPrint('Selected Printer: ${printer.name}');
+        debugPrint('Document Type: label');
+        debugPrint('Ticket ID: ${ticket.id}');
+
+        final result = await Printing.directPrintPdf(
+          printer: printer,
+          onLayout: (_) async => bytes,
+          format: pageFormat,
+        );
+
+        debugPrint('Label print result: ${result ? "success" : "failed"}');
+        if (!result) {
+          throw Exception(
+            'فشلت عملية طباعة الملصق على الطابعة ${printer.name}',
+          );
+        }
       }
     } catch (e) {
       debugPrint('Auto label print failed: $e');
@@ -572,6 +585,7 @@ class PrintService {
   }
 
   /// Print a full repair receipt to the configured receipt printer.
+  /// On web, uses the browser print dialog via [Printing.formatPdf].
   static Future<void> printReceipt(
     Ticket ticket, {
     bool isDelivery = false,
@@ -582,18 +596,6 @@ class PrintService {
   }) async {
     debugPrint('Auto Receipt Print Started');
     try {
-      final config = await PrinterSettingsService.load();
-      final printer = await PrinterSettingsService.resolve(
-        config.receiptPrinterName,
-        'طابعة الفواتير',
-      );
-
-      debugPrint('Selected Printer: ${printer.name}');
-      debugPrint(
-        'Document Type: receipt (isDelivery: $isDelivery, copies: $copies)',
-      );
-      debugPrint('Ticket ID: ${ticket.id}');
-
       final bytes = await generateReceiptPdf(
         ticket,
         isDelivery: isDelivery,
@@ -611,21 +613,43 @@ class PrintService {
         marginBottom: 4 * PdfPageFormat.mm,
       );
 
-      for (int i = 0; i < copies; i++) {
-        debugPrint('Printing copy ${i + 1} of $copies');
-        final result = await Printing.directPrintPdf(
-          printer: printer,
+      if (kIsWeb) {
+        // On web: use browser print dialog
+        await Printing.layoutPdf(
           onLayout: (_) async => bytes,
           format: pageFormat,
+          name: 'إيصال-${ticket.id}',
+        );
+        debugPrint('Receipt print completed via browser dialog');
+      } else {
+        final config = await PrinterSettingsService.load();
+        final printer = await PrinterSettingsService.resolve(
+          config.receiptPrinterName,
+          'طابعة الفواتير',
         );
 
+        debugPrint('Selected Printer: ${printer.name}');
         debugPrint(
-          'Receipt print copy ${i + 1} result: ${result ? "success" : "failed"}',
+          'Document Type: receipt (isDelivery: $isDelivery, copies: $copies)',
         );
-        if (!result) {
-          throw Exception(
-            'فشلت عملية طباعة الإيصال على الطابعة ${printer.name}',
+        debugPrint('Ticket ID: ${ticket.id}');
+
+        for (int i = 0; i < copies; i++) {
+          debugPrint('Printing copy ${i + 1} of $copies');
+          final result = await Printing.directPrintPdf(
+            printer: printer,
+            onLayout: (_) async => bytes,
+            format: pageFormat,
           );
+
+          debugPrint(
+            'Receipt print copy ${i + 1} result: ${result ? "success" : "failed"}',
+          );
+          if (!result) {
+            throw Exception(
+              'فشلت عملية طباعة الإيصال على الطابعة ${printer.name}',
+            );
+          }
         }
       }
     } catch (e) {

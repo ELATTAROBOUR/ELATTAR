@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:ui';
 import 'dart:async';
@@ -6179,7 +6180,9 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    if (!kIsWeb) {
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -6221,6 +6224,74 @@ class _PrinterSettingsDialogState extends State<_PrinterSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return Dialog(
+        backgroundColor: AppTheme.cardBg(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 400,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.print_outlined,
+                  color: Color(0xFFD4AF37),
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'الطباعة عبر المتصفح',
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFD4AF37),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'عند الطباعة من نسخة الويب، سيتم فتح نافذة الطباعة\nفي المتصفح حيث يمكنك اختيار الطابعة المناسبة.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    color: AppTheme.textMuted(context),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '📌 يمكنك إعداد الطابعة الافتراضية\nمن إعدادات المتصفح مباشرة.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: AppTheme.textDisabled(context),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4AF37),
+                    foregroundColor: const Color(0xFF1A2A3A),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('حسناً', style: TextStyle(fontSize: 16)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Dialog(
       backgroundColor: AppTheme.cardBg(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
